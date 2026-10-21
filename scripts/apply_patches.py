@@ -284,6 +284,10 @@ public class UpdatesPclCePatchModel : IUpdateSource
             RefreshCache();
 
         var wantPrerelease = channel == UpdateChannel.beta;
+        JsonObject? selected = null;
+        JsonObject? selectedAsset = null;
+        SemVer? selectedVersion = null;
+
         foreach (var node in _releases!)
         {
             if (node is not JsonObject release)
@@ -299,15 +303,27 @@ public class UpdatesPclCePatchModel : IUpdateSource
                 continue;
 
             var version = tag[1..^PatchedSuffix.Length];
-            if (!SemVer.TryParse(version, out _))
+            if (!SemVer.TryParse(version, out var parsedVersion))
                 continue;
 
             var found = FindAsset(release, channel, arch);
             if (found is null)
                 continue;
 
-            asset = found;
-            return release;
+            // Pick the highest version instead of trusting API ordering.  This
+            // keeps updates correct even if an older release is rebuilt later.
+            if (selectedVersion is not null && parsedVersion <= selectedVersion)
+                continue;
+
+            selected = release;
+            selectedAsset = found;
+            selectedVersion = parsedVersion;
+        }
+
+        if (selected is not null && selectedAsset is not null)
+        {
+            asset = selectedAsset;
+            return selected;
         }
 
         throw new Exception(
