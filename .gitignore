@@ -1,0 +1,9 @@
+.tmp/
+artifact/
+bin/
+obj/
+*.user
+
+__pycache__/
+*.pyc
+
