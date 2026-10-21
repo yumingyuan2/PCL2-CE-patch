@@ -366,10 +366,10 @@ public class UpdatesPclCePatchModel : IUpdateSource
 '''
 
 
-def patch_first_profile_microsoft(root: Path) -> None:
+def patch_profile_creation_unlock(root: Path) -> None:
     path = find_source(root, "ProfileUi.cs", "CanCreateOtherProfile")
     text, _ = read_source(path)
-    marker = "return ProfileService.HasMicrosoftProfile; // PCL2-CE-patch"
+    marker = "return true; // PCL2-CE-patch: allow profile types without a Microsoft login"
 
     primary_ok = marker in text
     if not primary_ok:
@@ -382,31 +382,55 @@ def patch_first_profile_microsoft(root: Path) -> None:
             text, primary_ok = sub_once(
                 text,
                 expression,
-                f"{marker}: the first profile must be a Microsoft account",
+                marker,
                 "ProfileUi.CanCreateOtherProfile",
             )
         except PatchError:
             primary_ok = False
 
     if not primary_ok:
-        # Fallback: force the only caller to pass includeOthers = false until a
-        # Microsoft profile exists.  This keeps the behaviour even if the
-        # CanCreateOtherProfile expression is refactored.
+        # Fallback: force the only caller to show all profile types.
         fallback = r"(var\s+includeOthers\s*=\s*)CanCreateOtherProfile\(\)\s*;"
         try:
             text, fallback_ok = sub_once(
                 text,
                 fallback,
-                r"\1ProfileService.HasMicrosoftProfile; // PCL2-CE-patch",
+                r"\1true; // PCL2-CE-patch: allow profile types without a Microsoft login",
                 "ProfileUi.CreateProfile includeOthers",
             )
         except PatchError:
             fallback_ok = False
         if not fallback_ok:
-            raise PatchError("Could not enforce a Microsoft account for the first profile")
+            raise PatchError("Could not unlock offline/third-party profile creation")
 
     write_source(path, text, path.read_bytes().startswith(b"\xef\xbb\xbf"))
-    print(f"  patched {path.relative_to(root)} (first profile requires Microsoft)")
+    print(f"  patched {path.relative_to(root)} (all profile types allowed without Microsoft login)")
+
+    # The yellow hint says "verify with Microsoft once before using other
+    # methods".  That is no longer true after the patch, so hide it.
+    try:
+        hint_path = find_source(root, "PageLoginProfile.xaml.cs", "HintMicrosoft")
+        hint_text, _ = read_source(hint_path)
+        hint_marker = "// PCL2-CE-patch: no Microsoft login required"
+        if hint_marker not in hint_text:
+            pattern = (
+                r"(?m)^(?P<indent>[ \t]*)HintMicrosoft\.Visibility\s*=\s*"
+                r"ProfileService\.Profiles\.Count\s*==\s*0\s*\?\s*Visibility\.Visible\s*:\s*Visibility\.Collapsed\s*;"
+            )
+            replacement = (
+                r"\g<indent>HintMicrosoft.Visibility = Visibility.Collapsed; "
+                "// PCL2-CE-patch: no Microsoft login required"
+            )
+            hint_text, _ = sub_once(
+                hint_text,
+                pattern,
+                replacement,
+                "PageLoginProfile.HintMicrosoft.Visibility",
+            )
+            write_source(hint_path, hint_text, hint_path.read_bytes().startswith(b"\xef\xbb\xbf"))
+            print(f"  patched {hint_path.relative_to(root)} (removed Microsoft-first hint)")
+    except PatchError:
+        print("  note: Microsoft-first hint was not found; skipped")
 
 
 def patch_updater(root: Path, repository: str) -> None:
@@ -486,7 +510,7 @@ def main() -> int:
     try:
         patch_right_hint(root)
         patch_region_policy(root)
-        patch_first_profile_microsoft(root)
+        patch_profile_creation_unlock(root)
         patch_updater(root, args.repo)
     except PatchError as error:
         print(f"error: {error}", file=sys.stderr)

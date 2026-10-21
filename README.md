@@ -22,10 +22,10 @@
    - 版本号从本仓库的 `v<version>-patched` 标签还原，并校验 GitHub API 返回的
      `sha256` digest
 
-4. **第一次新建档案只能使用正版**
-   - `ProfileUi.CanCreateOtherProfile()` 改为只检查
-     `ProfileService.HasMicrosoftProfile`
-   - 在已有正版档案之前，新建档案只显示 Microsoft 登录，离线/第三方入口不出现
+4. **不登录微软账户也能创建其他类型档案**
+   - `ProfileUi.CanCreateOtherProfile()` 改为直接返回 `true`
+   - 新建档案时始终可以选择 Microsoft、第三方（Authlib）或离线验证
+   - 同时隐藏“需要先进行一次正版验证才能使用其他验证方式”的提示
 
 补丁脚本位于 [`scripts/apply_patches.py`](scripts/apply_patches.py)。它使用明确的
 代码锚点；如果未来上游重构导致锚点消失，工作流会失败，而不是静默发布一个没有打补丁的版本。
