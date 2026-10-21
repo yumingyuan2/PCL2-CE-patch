@@ -1,0 +1,14 @@
+{
+  "name": "pcl2-ce-patch-dispatcher",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Cloudflare Worker that dispatches PCL2-CE-patch builds when upstream publishes a release",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}

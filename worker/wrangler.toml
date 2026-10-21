@@ -1,0 +1,21 @@
+name = "pcl2-ce-patch-dispatcher"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+workers_dev = true
+
+# Cloudflare cron uses UTC.  Every 15 minutes is enough for release polling;
+# change it if you want fewer checks.
+[triggers]
+crons = ["*/15 * * * *"]
+
+[vars]
+GITHUB_REPOSITORY = "yumingyuan2/PCL2-CE-patch"
+UPSTREAM_REPOSITORY = "PCL-Community/PCL-CE"
+DISPATCH_EVENT_TYPE = "upstream-release"
+
+# Create this with:
+#   npx wrangler kv namespace create STATE
+# then replace the id below with the printed id.
+[[kv_namespaces]]
+binding = "STATE"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"

@@ -34,12 +34,18 @@
 
 GitHub Actions 不能直接监听另一个仓库的 `release` 事件，因此：
 
-- 每 30 分钟运行一次 `scripts/plan_releases.py` 轮询上游 release
+- GitHub `schedule` 每 30 分钟运行一次 `scripts/plan_releases.py` 轮询上游 release
 - 只构建「最新的正式版」和「最新的 beta 版」中尚未构建过的版本
 - 支持手动 `workflow_dispatch`（可指定 tag）
 - 支持 `repository_dispatch`（`upstream-release`），方便用外部 webhook/中转实现即时触发
 
-如果希望缩短延迟，可以修改 `.github/workflows/patch-release.yml` 中的 cron。
+> GitHub 公共仓库的 `schedule` 在 60 天没有仓库活动后会被自动禁用。为了不依赖
+> keepalive commit，可以使用 [`worker/`](worker/README.md) 里的 Cloudflare Worker：
+> 它通过 Cloudflare Cron 每 15 分钟检查上游 release，然后发送 `repository_dispatch`，
+> 不受 GitHub 的 60 天规则影响。
+
+如果希望缩短延迟，可以修改 `.github/workflows/patch-release.yml` 中的 cron，或调整
+[`worker/wrangler.toml`](worker/wrangler.toml) 里的 Cloudflare Cron。
 
 ## 发布产物
 
