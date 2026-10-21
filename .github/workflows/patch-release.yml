@@ -13,6 +13,11 @@ on:
         description: "Upstream tag to build (e.g. v2.15.1). Leave empty to build the latest stable/beta."
         required: false
         type: string
+      force:
+        description: "Rebuild even if a patched release with both assets already exists."
+        required: false
+        default: false
+        type: boolean
   repository_dispatch:
     types: [upstream-release]
 
@@ -44,6 +49,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           UPSTREAM_REPOSITORY: PCL-Community/PCL-CE
           INPUT_TAG: ${{ inputs.tag }}
+          FORCE_REBUILD: ${{ github.event.client_payload.force || inputs.force || 'false' }}
         run: python3 scripts/plan_releases.py
 
   build:
@@ -170,6 +176,7 @@ jobs:
               "$REPOSITORY" "$REPOSITORY" "$UPSTREAM_TAG" "$UPSTREAM_TAG"
             printf '已应用补丁：\n\n'
             printf -- '- 默认隐藏启动页右侧的 PCL CE 版本提示\n'
+            printf -- '- 隐藏更新后的“PCL CE 版本说明”弹窗\n'
             printf -- '- 解除中国大陆区域的 Minecraft 下载、补全与整合包安装限制\n'
             printf -- '- 默认更新改为从本仓库下载 patched 版本\n'
             printf -- '- 不登录微软账户也可以创建第三方/离线档案\n\n'

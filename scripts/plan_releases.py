@@ -24,7 +24,6 @@ import os
 import sys
 import urllib.error
 import urllib.request
-from datetime import datetime
 from pathlib import Path
 
 API_ROOT = "https://api.github.com"
@@ -32,6 +31,7 @@ UPSTREAM = os.environ.get("UPSTREAM_REPOSITORY", "PCL-Community/PCL-CE")
 REPOSITORY = os.environ.get("GITHUB_REPOSITORY", "")
 TOKEN = os.environ.get("GH_TOKEN", "")
 INPUT_TAG = os.environ.get("INPUT_TAG", "").strip()
+FORCE_REBUILD = os.environ.get("FORCE_REBUILD", "").strip().lower() in {"1", "true", "yes"}
 
 
 def api(path: str, *, allow_not_found: bool = False):
@@ -76,12 +76,6 @@ def has_complete_patched_release(version: str, configuration: str) -> bool:
     }.issubset(names)
 
 
-def parse_time(value: str | None) -> datetime:
-    if not value:
-        return datetime.min.replace(tzinfo=None)
-    return datetime.fromisoformat(value.replace("Z", "+00:00")).replace(tzinfo=None)
-
-
 def choose_candidates() -> list[dict]:
     if INPUT_TAG:
         tag = INPUT_TAG if INPUT_TAG.startswith("v") else f"v{INPUT_TAG}"
@@ -106,11 +100,10 @@ def choose_candidates() -> list[dict]:
     if stable:
         selected.append(stable)
     if beta:
-        # Do not resurrect an old beta after a newer stable has shipped.  A
-        # beta published after the current stable is the one users on the beta
-        # channel actually need.
-        if stable is None or parse_time(beta.get("published_at")) > parse_time(stable.get("published_at")):
-            selected.append(beta)
+        # Always keep a patched build for the newest beta.  A beta can be
+        # older than the newest stable and still be the version installed by
+        # users on the beta channel, so do not skip it based on publish time.
+        selected.append(beta)
 
     return selected
 
@@ -131,7 +124,7 @@ def main() -> int:
             continue
         version = release_version(tag)
         configuration = release_configuration(release)
-        if has_complete_patched_release(version, configuration):
+        if not FORCE_REBUILD and has_complete_patched_release(version, configuration):
             print(f"skip {tag}: {patched_tag(version)} already has both patched assets")
             continue
 

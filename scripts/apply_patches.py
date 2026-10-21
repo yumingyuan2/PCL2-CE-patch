@@ -116,25 +116,34 @@ def patch_right_hint(root: Path) -> None:
 
 
 def patch_region_policy(root: Path) -> None:
-    region_path = find_source(root, "RegionPolicy.cs", "RegionAssessment")
-    text, _ = read_source(region_path)
-    marker = "public bool IsRestricted => false; // PCL2-CE-patch"
-    central_patched = marker in text
+    try:
+        region_path = find_source(root, "RegionPolicy.cs", "RegionAssessment")
+    except PatchError:
+        region_path = None
 
-    if not central_patched:
-        pattern = (
-            r"public\s+bool\s+IsRestricted\s*=>\s*Classification\s+is\s+"
-            r"RegionClassification\.Mainland\s+or\s+RegionClassification\.Unknown\s*;"
-        )
-        replacement = f"{marker}: allow Minecraft downloads in every region"
-        text, central_patched = sub_once(
-            text,
-            pattern,
-            replacement,
-            "RegionAssessment.IsRestricted",
-        )
+    central_patched = False
+    if region_path is not None:
+        text, _ = read_source(region_path)
+        marker = "public bool IsRestricted => false; // PCL2-CE-patch"
+        central_patched = marker in text
 
-    write_source(region_path, text, region_path.read_bytes().startswith(b"\xef\xbb\xbf"))
+        if not central_patched:
+            pattern = (
+                r"public\s+bool\s+IsRestricted\s*=>\s*Classification\s+is\s+"
+                r"RegionClassification\.Mainland\s+or\s+RegionClassification\.Unknown\s*;"
+            )
+            replacement = f"{marker}: allow Minecraft downloads in every region"
+            try:
+                text, central_patched = sub_once(
+                    text,
+                    pattern,
+                    replacement,
+                    "RegionAssessment.IsRestricted",
+                )
+            except PatchError:
+                central_patched = False
+
+        write_source(region_path, text, region_path.read_bytes().startswith(b"\xef\xbb\xbf"))
 
     policy_is_restricted_patched = False
     check_patched = False
@@ -184,13 +193,22 @@ def patch_region_policy(root: Path) -> None:
 
         write_source(policy_path, policy_text, policy_path.read_bytes().startswith(b"\xef\xbb\xbf"))
 
+    if region_path is None and policy_path is None:
+        # Older betas predate the region policy entirely.  There is no gate to
+        # disable, so this patch is a no-op for them.
+        print("  note: no region policy found (older beta); MC downloads are already unrestricted")
+        return
+
     if not (central_patched or (policy_is_restricted_patched and check_patched)):
         raise PatchError(
             "Could not disable the regional feature gate. "
             "Neither RegionAssessment.IsRestricted nor the RestrictedFeaturePolicy fallbacks matched."
         )
 
-    print(f"  patched {region_path.relative_to(root)} (region gate disabled)")
+    if region_path is not None:
+        print(f"  patched {region_path.relative_to(root)} (region gate disabled)")
+    else:
+        print("  patched RestrictedFeaturePolicy (region gate disabled)")
 
 
 UPDATER_SOURCE = r'''using System.Text.Json.Nodes;
@@ -433,6 +451,56 @@ def patch_profile_creation_unlock(root: Path) -> None:
         print("  note: Microsoft-first hint was not found; skipped")
 
 
+def patch_ce_announce(root: Path) -> None:
+    try:
+        path = find_source(root, "UpdateManager.cs", "ShowCEAnnounce")
+    except PatchError:
+        print("  note: ShowCEAnnounce not found; nothing to suppress")
+        return
+
+    text, newline = read_source(path)
+    marker = "// PCL2-CE-patch: suppress the CE announcement after an update"
+    if marker in text:
+        return
+
+    start = text.find("public static void ShowCEAnnounce")
+    if start < 0:
+        print("  note: ShowCEAnnounce signature not found; skipped")
+        return
+
+    brace = text.find("{", start)
+    if brace < 0:
+        raise PatchError("Could not find the ShowCEAnnounce body")
+    depth = 0
+    close = -1
+    for index in range(brace, len(text)):
+        char = text[index]
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                close = index
+                break
+    if close < 0:
+        raise PatchError("Could not find the end of ShowCEAnnounce")
+
+    line_start = text.rfind("\n", 0, start) + 1
+    indent = text[line_start:start]
+    signature = text[start:brace]
+    replacement = newline.join(
+        [
+            signature.rstrip(),
+            f"{indent}{{",
+            f"{indent}    {marker}",
+            f"{indent}}}",
+        ]
+    )
+    text = text[:start] + replacement + text[close + 1 :]
+    write_source(path, text, path.read_bytes().startswith(b"\xef\xbb\xbf"))
+    print(f"  patched {path.relative_to(root)} (suppressed CE update announcement)")
+
+
 def patch_updater(root: Path, repository: str) -> None:
     updater_path = find_source(root, "UpdateManager.cs", "remoteServer")
     text, newline = read_source(updater_path)
@@ -511,6 +579,7 @@ def main() -> int:
         patch_right_hint(root)
         patch_region_policy(root)
         patch_profile_creation_unlock(root)
+        patch_ce_announce(root)
         patch_updater(root, args.repo)
     except PatchError as error:
         print(f"error: {error}", file=sys.stderr)
