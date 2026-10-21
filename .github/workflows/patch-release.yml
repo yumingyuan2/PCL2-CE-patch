@@ -131,7 +131,9 @@ jobs:
       - name: Upload patched artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: patched-${{ matrix.version }}-${{ matrix.arch }}
+          # Include the configuration so "2.15.1" never prefix-matches
+          # "2.15.1-beta.1" when the publish job downloads by pattern.
+          name: patched-${{ matrix.configuration }}-${{ matrix.version }}-${{ matrix.arch }}
           path: artifact/PCL2_CE_*_patched.exe*
           if-no-files-found: error
 
@@ -148,7 +150,7 @@ jobs:
       - name: Download patched artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: patched-${{ matrix.version }}-*
+          pattern: patched-${{ matrix.configuration }}-${{ matrix.version }}-*
           path: dist
           merge-multiple: true
 
