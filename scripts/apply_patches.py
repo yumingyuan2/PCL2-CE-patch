@@ -1120,6 +1120,9 @@ def patch_oe_shell(root: Path) -> None:
             count=1,
         )
 
+        # Official PCL is fixed-size and cannot be maximized.
+        text = text.replace('ResizeMode="CanResize"', 'ResizeMode="CanMinimize"', 1)
+
         # Official fourth tab is "More" with a grid icon.
         text = text.replace('SvgIcon="lucide/wrench"', 'SvgIcon="lucide/grid-2x2"', 1)
         write_source(main_path, text, main_path.read_bytes().startswith(b"\xef\xbb\xbf"))
