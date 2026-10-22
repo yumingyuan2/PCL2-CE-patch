@@ -701,6 +701,7 @@ def patch_oe_launch_toggle(root: Path) -> None:
             [
                 "    " + code_marker,
                 "    private bool _syncLoginToggle;",
+                "    private bool _authLoginBusy;",
                 "",
                 "    private void BtnLoginMs_Click(object sender, MouseButtonEventArgs e)",
                 "    {",
@@ -995,8 +996,19 @@ def patch_oe_single_profile_flow(root: Path) -> None:
             "                // PCL2-CE-patch: OE auth login on launch",
             "                if (pageCurrent == PageType.Auth)",
             "                {",
-            "                    if (ModMain.frmLoginAuth is null || !await ModMain.frmLoginAuth.EnsureProfileAsync())",
+            "                    if (_authLoginBusy) return;",
+            "                    _authLoginBusy = true;",
+            "                    BtnLaunch.IsEnabled = false;",
+            "                    PageChangeToLaunching();",
+            "                    var authOk = ModMain.frmLoginAuth is not null &&",
+            "                                 await ModMain.frmLoginAuth.EnsureProfileAsync(false);",
+            "                    _authLoginBusy = false;",
+            "                    if (!authOk)",
+            "                    {",
+            "                        PageChangeToLogin();",
+            "                        BtnLaunch.IsEnabled = true;",
             "                        return;",
+            "                    }",
             "                }",
             "                if (File.Exists(ModInstanceList.McMcInstanceSelected.PathInstance + \".pclignore\"))",
         ]
@@ -1376,7 +1388,7 @@ def patch_oe_auth_page(root: Path) -> None:
             '    <TextBlock x:Name="TextPassTitle" Text="密码" Grid.Row="2" VerticalAlignment="Center" />',
             '    <local:MyCheckBox x:Name="CheckRemember" Tag="LoginRemember" Height="20" Margin="-1,12,80,0"',
             '                     Text="记住密码" Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2" />',
-            '    <local:MyTextButton Margin="0,12,2,0" x:Name="BtnLink" Content="注册账号" Grid.Row="3"',
+            '    <local:MyTextButton Margin="0,12,2,0" x:Name="BtnLink" Content="找回密码" Grid.Row="3"',
             '                        HorizontalAlignment="Right" Grid.Column="1" Padding="20,0,0,0"',
             '                        HorizontalContentAlignment="Right" FontSize="13" VerticalContentAlignment="Center" />',
             "    <Grid x:Name=\"PanHidden\" Grid.RowSpan=\"4\" Grid.ColumnSpan=\"2\" Visibility=\"Collapsed\">",
@@ -1477,7 +1489,8 @@ def patch_oe_auth_page(root: Path) -> None:
     code = code.replace(
         "        _hasRegisterLink = new HttpValidator().Validate(address).IsValid;",
         "        _hasRegisterLink = new HttpValidator().Validate(address).IsValid ||"
-        + newline + "                          !string.IsNullOrWhiteSpace(_authServerUrl);",
+        + newline + "                          !string.IsNullOrWhiteSpace(_authServerUrl);"
+        + newline + "        BtnLink.Content = Lang.Text(\"Launch.Account.Auth.ForgotPassword\");",
         1,
     )
     old_click = newline.join(
@@ -1524,7 +1537,7 @@ def patch_oe_auth_page(root: Path) -> None:
     ensure = newline.join(
         [
             "    // PCL2-CE-patch: OE auth ensure profile",
-            "    public async Task<bool> EnsureProfileAsync()",
+            "    public async Task<bool> EnsureProfileAsync(bool refresh = true)",
             "    {",
             "        if (string.IsNullOrWhiteSpace(_authServerUrl))",
             "            _authServerUrl = draggedAuthServer ?? \"\";",
@@ -1552,7 +1565,7 @@ def patch_oe_auth_page(root: Path) -> None:
             "            await Task.Delay(50);",
             "        if (ModLaunch.mcLoginAuthLoader.State == ModBase.LoadState.Finished)",
             "        {",
-            "            ModMain.frmLaunchLeft.RefreshPage(true);",
+            "            if (refresh) ModMain.frmLaunchLeft.RefreshPage(true);",
             "            return true;",
             "        }",
             "        ProfileService.IsCreatingProfile = false;",
