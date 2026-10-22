@@ -802,6 +802,81 @@ def patch_oe_offline_panel(root: Path) -> None:
         print(f"  patched {code_path.relative_to(root)} (offline account items)")
 
 
+def patch_oe_single_profile_flow(root: Path) -> None:
+    """Use official-style single-account flow instead of CE's profile list."""
+    path = find_source(root, "PageLaunchLeft.xaml.cs", "type = PageType.Profile;")
+    code, newline = read_source(path)
+    marker = "// PCL2-CE-patch: OE single-profile flow"
+    if marker not in code:
+        old = newline.join(
+            [
+                "        else",
+                "        {",
+                "            type = PageType.Profile;",
+                "            if (_launchButtonAction != LaunchButtonAction.Download)",
+                "                BtnLaunch.IsEnabled = false;",
+                "        }",
+            ]
+        )
+        replacement = newline.join(
+            [
+                "        else",
+                "        {",
+                "            " + marker,
+                "            type = pageCurrent == PageType.Offline ? PageType.Offline : PageType.Ms;",
+                "            if (_launchButtonAction != LaunchButtonAction.Download)",
+                "                BtnLaunch.IsEnabled = false;",
+                "        }",
+            ]
+        )
+        if old not in code:
+            print("  note: OE profile flow anchor not found; skipped")
+            return
+        code = code.replace(old, replacement, 1)
+        write_source(path, code, path.read_bytes().startswith(b"\xef\xbb\xbf"))
+        print(f"  patched {path.relative_to(root)} (single-profile flow)")
+
+    skin_path = find_source(root, "PageLoginProfileSkin.xaml.cs", "private void ChangeProfile")
+    skin, _ = read_source(skin_path)
+    marker = "// PCL2-CE-patch: OE switch account"
+    if marker not in skin:
+        old = newline.join(
+            [
+                "    private void ChangeProfile(object sender, EventArgs e)",
+                "    {",
+                "        ProfileService.Select(null);",
+                "        ModBase.RunInUi(() =>",
+                "        {",
+                "            ModMain.frmLaunchLeft.RefreshPage(true);",
+                "            ModMain.frmLaunchLeft.BtnLaunch.IsEnabled = false;",
+                "        });",
+                "    }",
+            ]
+        )
+        replacement = newline.join(
+            [
+                "    private void ChangeProfile(object sender, EventArgs e)",
+                "    {",
+                "        " + marker,
+                "        var wasOffline = ProfileService.Current?.ProfileType == ProfileType.Offline;",
+                "        ProfileService.Select(null);",
+                "        ModBase.RunInUi(() =>",
+                "        {",
+                "            ModMain.frmLaunchLeft.RefreshPage(true,",
+                "                wasOffline ? ModLaunch.McLoginType.Legacy : ModLaunch.McLoginType.Ms);",
+                "            ModMain.frmLaunchLeft.BtnLaunch.IsEnabled = false;",
+                "        });",
+                "    }",
+            ]
+        )
+        if old not in skin:
+            print("  note: OE switch-account anchor not found; skipped")
+            return
+        skin = skin.replace(old, replacement, 1)
+        write_source(skin_path, skin, skin_path.read_bytes().startswith(b"\xef\xbb\xbf"))
+        print(f"  patched {skin_path.relative_to(root)} (switch account)")
+
+
 def patch_oe_login_panel(root: Path) -> None:
     """Match the official Microsoft login row: account combo + 登录 button."""
     path = find_source(root, "PageLoginMs.xaml", "BtnLogin")
@@ -824,8 +899,12 @@ def patch_oe_login_panel(root: Path) -> None:
             "                <ColumnDefinition />",
             "                <ColumnDefinition Width=\"Auto\" />",
             "            </Grid.ColumnDefinitions>",
-            '            <local:MyComboBox x:Name="ComboAccounts" Height="28" Margin="0,0,0,0"',
-            '                                SelectionChanged="ComboAccounts_SelectionChanged">',
+            '            <local:MyComboBox x:Name="ComboAccounts" Height="28" Margin="0,0,0,0">',
+            "                <local:MyComboBox.ContextMenu>",
+            "                    <ContextMenu>",
+            '                        <local:MyMenuItem Header="删除当前账号" Click="DeleteAccount_Click" />',
+            "                    </ContextMenu>",
+            "                </local:MyComboBox.ContextMenu>",
             '                <local:MyComboBoxItem Content="添加新账号" />',
             "            </local:MyComboBox>",
             '            <local:MyButton x:Name="BtnLogin" Grid.Column="1" Height="28" Width="60"',
@@ -874,23 +953,53 @@ def patch_oe_login_panel(root: Path) -> None:
             "        InitializeComponent();" + file_newline + insert,
             1,
         )
-        handler = file_newline.join(
+        login_old = file_newline.join(
             [
-                "    " + code_marker,
-                "    private void ComboAccounts_SelectionChanged(object sender, SelectionChangedEventArgs e)",
+                "    private void BtnLogin_Click(object sender, EventArgs e)",
                 "    {",
-                "        if (!IsLoaded) return;",
-                "        if (ComboAccounts.SelectedItem is MyComboBoxItem { Tag: McProfile profile })",
+                "        BtnLogin.IsEnabled = false;",
+            ]
+        )
+        login_new = file_newline.join(
+            [
+                "    private void BtnLogin_Click(object sender, EventArgs e)",
+                "    {",
+                "        // PCL2-CE-patch: OE existing account login",
+                "        if (ComboAccounts.SelectedItem is MyComboBoxItem { Tag: McProfile existing })",
                 "        {",
-                "            ProfileService.Select(profile);",
+                "            ProfileService.Select(existing);",
                 "            ProfileService.IsCreatingProfile = false;",
                 "            ModBase.RunInUi(() => ModMain.frmLaunchLeft.RefreshPage(true));",
+                "            return;",
                 "        }",
+                "        BtnLogin.IsEnabled = false;",
+            ]
+        )
+        if login_old not in code:
+            print("  note: login click anchor not found; skipped")
+            return
+        code = code.replace(login_old, login_new, 1)
+        delete_handler = file_newline.join(
+            [
+                "    // PCL2-CE-patch: OE delete account",
+                "    private void DeleteAccount_Click(object sender, RoutedEventArgs e)",
+                "    {",
+                "        if (ComboAccounts.SelectedItem is not MyComboBoxItem { Tag: McProfile profile }) return;",
+                "        ProfileService.Remove(profile);",
+                "        ComboAccounts.Items.Remove(ComboAccounts.SelectedItem);",
+                "        if (ProfileService.Current == profile)",
+                "            ProfileService.Select(null);",
+                "        ComboAccounts.SelectedIndex = 0;",
+                "        ModMain.frmLaunchLeft.RefreshPage(true, ModLaunch.McLoginType.Ms);",
                 "    }",
                 "",
             ]
         )
-        code = code.replace("    private void BtnBack_Click", handler + "    private void BtnBack_Click", 1)
+        code = code.replace(
+            "    private void BtnBack_Click",
+            delete_handler + "    private void BtnBack_Click",
+            1,
+        )
         write_source(code_path, code, code_path.read_bytes().startswith(b"\xef\xbb\xbf"))
         print(f"  patched {code_path.relative_to(root)} (login account list)")
 
@@ -1487,6 +1596,7 @@ def main() -> int:
         patch_page_load_smoothness(root)
         if args.edition == "oe":
             patch_oe_launch_toggle(root)
+            patch_oe_single_profile_flow(root)
             patch_oe_login_panel(root)
             patch_oe_offline_panel(root)
             patch_oe_shell(root)
