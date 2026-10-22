@@ -704,6 +704,45 @@ def patch_oe_launch_toggle(root: Path) -> None:
         print(f"  patched {code_path.relative_to(root)} (login type handlers)")
 
 
+def patch_oe_login_panel(root: Path) -> None:
+    """Match the official Microsoft login row: account combo + 登录 button."""
+    path = find_source(root, "PageLoginMs.xaml", "BtnLogin")
+    text, newline = read_source(path)
+    marker = "<!-- PCL2-CE-patch: OE login row -->"
+    if marker in text:
+        return
+
+    old = newline.join(
+        [
+            '        <local:MyButton Text="{DynamicResource Launch.Account.Microsoft.Start}" x:Name="BtnLogin" ColorType="Highlight"',
+            '                        Height="28" Width="100" Margin="0,0,0,0" Grid.Row="2" Grid.Column="0" />',
+        ]
+    )
+    replacement = newline.join(
+        [
+            "        " + marker,
+            '        <Grid Grid.Row="2" Grid.ColumnSpan="2">',
+            "            <Grid.ColumnDefinitions>",
+            "                <ColumnDefinition />",
+            "                <ColumnDefinition Width=\"Auto\" />",
+            "            </Grid.ColumnDefinitions>",
+            '            <local:MyComboBox x:Name="ComboAccounts" Height="28" Margin="0,0,0,0">',
+            '                <local:MyComboBoxItem Content="添加新账号" />',
+            "            </local:MyComboBox>",
+            '            <local:MyButton x:Name="BtnLogin" Grid.Column="1" Height="28" Width="60"',
+            '                            Margin="10,0,0,0" ColorType="Highlight"',
+            '                            Text="{DynamicResource Launch.Account.Login}" />',
+            "        </Grid>",
+        ]
+    )
+    if old not in text:
+        print("  note: official login row anchor not found; skipped")
+        return
+    text = text.replace(old, replacement, 1)
+    write_source(path, text, path.read_bytes().startswith(b"\xef\xbb\xbf"))
+    print(f"  patched {path.relative_to(root)} (official login row)")
+
+
 def patch_oe_more_pages(root: Path) -> None:
     """Move About/Feedback into the More (Tools) page for OE."""
     xaml_path = find_source(root, "PageToolsLeft.xaml", "ItemTest")
@@ -998,6 +1037,7 @@ def main() -> int:
         patch_remove_prompts(root)
         if args.edition == "oe":
             patch_oe_launch_toggle(root)
+            patch_oe_login_panel(root)
             patch_oe_shell(root)
             patch_oe_more_pages(root)
             patch_oe_about_footer(root)
