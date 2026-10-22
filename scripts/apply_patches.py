@@ -794,6 +794,61 @@ def patch_oe_login_panel(root: Path) -> None:
     print(f"  patched {path.relative_to(root)} (official login row)")
 
 
+def patch_oe_more_links(root: Path) -> None:
+    """Add the official Help / Vote entries to the More page."""
+    path = find_source(root, "PageToolsLeft.xaml", "ItemFeedback")
+    xaml, newline = read_source(path)
+    marker = "<!-- PCL2-CE-patch: OE more links -->"
+    if marker not in xaml:
+        anchor = (
+            '        <local:MyListItem x:Name="ItemFeedback" IsScaleAnimationEnabled="False" Type="RadioBox"'
+        )
+        block = newline.join(
+            [
+                "        " + marker,
+                '        <local:MyListItem x:Name="ItemHelp" IsScaleAnimationEnabled="False" Type="Clickable"',
+                '                           MinPaddingRight="35" Height="36"',
+                '                           Title="帮助" SvgIcon="lucide/circle-help"',
+                '                           Tag="https://github.com/LTCatt/PCL2Help" Click="OpenMoreLink" />',
+                '        <local:MyListItem x:Name="ItemVote" IsScaleAnimationEnabled="False" Type="Clickable"',
+                '                           MinPaddingRight="35" Height="36"',
+                '                           Title="新功能投票" SvgIcon="lucide/layout-list"',
+                '                           Tag="https://github.com/Meloong-Git/PCL/discussions/2" Click="OpenMoreLink" />',
+            ]
+        )
+        if anchor not in xaml:
+            print("  note: More link anchor not found; skipped")
+            return
+        xaml = xaml.replace(anchor, block + newline + anchor, 1)
+        write_source(path, xaml, path.read_bytes().startswith(b"\xef\xbb\xbf"))
+        print(f"  patched {path.relative_to(root)} (Help / Vote links)")
+
+    code_path = find_source(root, "PageToolsLeft.xaml.cs", "PageCheck")
+    code, _ = read_source(code_path)
+    code_marker = "// PCL2-CE-patch: OE more links"
+    if code_marker not in code:
+        if "using System.Windows.Input;" not in code:
+            code = code.replace("using System.Windows;", "using System.Windows;\nusing System.Windows.Input;", 1)
+        file_newline = "\r\n" if "\r\n" in code else "\n"
+        method = file_newline.join(
+            [
+                "    " + code_marker,
+                "    private void OpenMoreLink(object sender, MouseButtonEventArgs e)",
+                "    {",
+                "        if (sender is MyListItem { Tag: string url })",
+                "            ModBase.OpenWebsite(url);",
+                "    }",
+                "",
+            ]
+        )
+        anchor = "    #region 页面切换"
+        if anchor not in code:
+            raise PatchError("Could not find PageTools page region")
+        code = code.replace(anchor, method + anchor, 1)
+        write_source(code_path, code, code_path.read_bytes().startswith(b"\xef\xbb\xbf"))
+        print(f"  patched {code_path.relative_to(root)} (Help / Vote handlers)")
+
+
 def patch_oe_more_pages(root: Path) -> None:
     """Move About/Feedback into the More (Tools) page for OE."""
     xaml_path = find_source(root, "PageToolsLeft.xaml", "ItemTest")
@@ -1092,6 +1147,7 @@ def main() -> int:
             patch_oe_offline_panel(root)
             patch_oe_shell(root)
             patch_oe_more_pages(root)
+            patch_oe_more_links(root)
             patch_oe_about_footer(root)
         asset_prefix = "PCL2_OE" if args.edition == "oe" else "PCL2_CE"
         release_suffix = "-oe-patched" if args.edition == "oe" else "-patched"
