@@ -642,6 +642,32 @@ def patch_oe_launch_toggle(root: Path) -> None:
         print(f"  patched {code_path.relative_to(root)} (login type handlers)")
 
 
+def patch_oe_about_footer(root: Path) -> None:
+    try:
+        path = find_source(root, "PageSetupAbout.xaml", "MyScrollViewer")
+    except PatchError:
+        return
+    text, newline = read_source(path)
+    marker = "<!-- PCL2-CE-patch: OE about footer -->"
+    if marker in text:
+        return
+    anchor = f"        </StackPanel>{newline}    </local:MyScrollViewer>"
+    if anchor not in text:
+        print("  note: About page footer anchor not found; skipped")
+        return
+    footer = newline.join(
+        [
+            "            " + marker,
+            '            <TextBlock Margin="21,0,21,20" HorizontalAlignment="Center" FontSize="12"',
+            '                       Opacity="0.5" TextWrapping="Wrap"',
+            '                       Text="PCL2 OE 是第三方修改版，与官方 PCL 无关。" />',
+        ]
+    )
+    text = text.replace(anchor, footer + newline + anchor, 1)
+    write_source(path, text, path.read_bytes().startswith(b"\xef\xbb\xbf"))
+    print(f"  patched {path.relative_to(root)} (third-party footer)")
+
+
 def patch_oe_shell(root: Path) -> None:
     """First visible layer of the OE UI: title, CE badge, fourth tab."""
     main_path = find_source(root, "FormMain.xaml", "CELogo")
@@ -850,6 +876,7 @@ def main() -> int:
         if args.edition == "oe":
             patch_oe_launch_toggle(root)
             patch_oe_shell(root)
+            patch_oe_about_footer(root)
         asset_prefix = "PCL2_OE" if args.edition == "oe" else "PCL2_CE"
         release_suffix = "-oe-patched" if args.edition == "oe" else "-patched"
         patch_updater(root, args.repo, asset_prefix, release_suffix)
