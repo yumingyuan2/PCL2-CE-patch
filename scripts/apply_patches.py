@@ -912,6 +912,22 @@ def patch_oe_more_links(root: Path) -> None:
         print(f"  patched {code_path.relative_to(root)} (Help / Vote handlers)")
 
 
+def patch_oe_hide_font_card(root: Path) -> None:
+    """Hide the CE-only font card so 个性化 matches official PCL."""
+    path = find_source(root, "PageSetupUI.xaml", "CardFont")
+    text, _ = read_source(path)
+    marker = "<!-- PCL2-CE-patch: OE hide font card -->"
+    if marker in text:
+        return
+    text = text.replace(
+        '<local:MyCard x:Name="CardFont"',
+        "        " + marker + '\n        <local:MyCard x:Name="CardFont" Visibility="Collapsed"',
+        1,
+    )
+    write_source(path, text, path.read_bytes().startswith(b"\xef\xbb\xbf"))
+    print(f"  patched {path.relative_to(root)} (hidden font card)")
+
+
 def patch_oe_more_flat(root: Path) -> None:
     """Remove the old category headers from the More page."""
     path = find_source(root, "PageToolsLeft.xaml", "ItemGameLink")
@@ -1292,6 +1308,7 @@ def main() -> int:
             patch_oe_more_pages(root)
             patch_oe_more_links(root)
             patch_oe_more_flat(root)
+            patch_oe_hide_font_card(root)
             patch_oe_more_order(root)
             patch_oe_about_footer(root)
         asset_prefix = "PCL2_OE" if args.edition == "oe" else "PCL2_CE"
