@@ -561,6 +561,36 @@ def patch_ce_announce(root: Path) -> None:
     print(f"  patched {path.relative_to(root)} (suppressed CE update announcement)")
 
 
+def patch_security_hardening(root: Path) -> None:
+    """Redact launch credentials and block custom-homepage setting escalation."""
+    log_path = find_source(root, "ModLaunch.cs", "AccessToken：")
+    text, _ = read_source(log_path)
+    if "PCL2-CE-patch: redact launch credentials" not in text:
+        text = text.replace(
+            'McLaunchLog("AccessToken：" + mcLoginLoader.output.AccessToken);',
+            'McLaunchLog("AccessToken：（已隐藏）"); // PCL2-CE-patch: redact launch credentials',
+            1,
+        )
+        text = text.replace(
+            'McLaunchLog("ClientToken：" + mcLoginLoader.output.ClientToken);',
+            'McLaunchLog("ClientToken：（已隐藏）");',
+            1,
+        )
+        write_source(log_path, text, log_path.read_bytes().startswith(b"\xef\xbb\xbf"))
+        print(f"  patched {log_path.relative_to(root)} (redact launch credentials)")
+
+    event_path = find_source(root, "CustomEvent.cs", "SecuritySensitiveSettingKeys")
+    event, _ = read_source(event_path)
+    if '"HintCustomCommand"' not in event:
+        event = event.replace(
+            '"LaunchAdvanceRun",',
+            '"LaunchAdvanceRun",\n            "HintCustomCommand",\n            "LaunchAdvanceJvm",\n            "LaunchAdvanceGame",\n            "UiCustomType",\n            "UiCustomNet",\n            "ToolDownloadSource",',
+            1,
+        )
+        write_source(event_path, event, event_path.read_bytes().startswith(b"\xef\xbb\xbf"))
+        print(f"  patched {event_path.relative_to(root)} (custom-event setting allowlist)")
+
+
 def patch_page_load_smoothness(root: Path) -> None:
     """Defer heavy first-load work so switching pages renders before it blocks."""
     download_path = find_source(root, "PageDownloadInstall.xaml.cs", "private void Init()")
@@ -2138,6 +2168,7 @@ def main() -> int:
         patch_profile_creation_unlock(root)
         patch_ce_announce(root)
         patch_remove_prompts(root)
+        patch_security_hardening(root)
         patch_page_load_smoothness(root)
         if args.edition == "oe":
             patch_oe_launch_toggle(root)
