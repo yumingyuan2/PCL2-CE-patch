@@ -1002,12 +1002,17 @@ def patch_oe_offline_preview(root: Path) -> None:
         return
     old = newline.join(
         [
+            "    private static ModBase.EqualableList<string> SkinLegacyInput()",
+            "    {",
             "        return new ModBase.EqualableList<string>",
             "            { ProfileService.Current?.UserName ?? \"\", ProfileService.Current?.Uuid ?? \"\" };",
+            "    }",
         ]
     )
     replacement = newline.join(
         [
+            "    private static ModBase.EqualableList<string> SkinLegacyInput()",
+            "    {",
             "        " + marker,
             "        if (ProfileService.Current?.ProfileType != ProfileType.Offline &&",
             "            !string.IsNullOrWhiteSpace(PageLoginOffline.PreviewName))",
@@ -1017,6 +1022,7 @@ def patch_oe_offline_preview(root: Path) -> None:
             "        }",
             "        return new ModBase.EqualableList<string>",
             "            { ProfileService.Current?.UserName ?? \"\", ProfileService.Current?.Uuid ?? \"\" };",
+            "    }",
         ]
     )
     if old not in code:
