@@ -924,6 +924,32 @@ def patch_oe_single_profile_flow(root: Path) -> None:
             print("  note: OE profile flow anchor not found; skipped")
             return
         code = code.replace(old, replacement, 1)
+        auth_only = newline.join(
+            [
+                "        // PCL2-CE-patch: OE instance Auth-only login",
+                "        var authOnly = false;",
+                "        try",
+                "        {",
+                "            var instance = ModInstanceList.McMcInstanceSelected;",
+                "            authOnly = instance is not null &&",
+                "                       Config.InstanceAuth.LoginRequirementSolution[instance.PathInstance] == 2;",
+                "        }",
+                "        catch",
+                "        {",
+                "        }",
+                "        if (authOnly && (ProfileService.Current is null ||",
+                "                         ProfileService.Current.ProfileType is not ProfileType.Authlib and not ProfileType.YggdrasilConnect))",
+                "        {",
+                "            if (pageCurrent != PageType.Auth)",
+                "                PageChange(PageType.Auth, anim);",
+                "            BtnLaunch.IsEnabled = true;",
+                "            return;",
+                "        }",
+            ]
+        )
+        anchor = "        var type = default(PageType);"
+        if anchor in code:
+            code = code.replace(anchor, auth_only + newline + anchor, 1)
         write_source(path, code, path.read_bytes().startswith(b"\xef\xbb\xbf"))
         print(f"  patched {path.relative_to(root)} (single-profile flow)")
 
@@ -1411,6 +1437,7 @@ def patch_oe_auth_page(root: Path) -> None:
         "        BtnPasswordWebsite.Visibility = Visibility.Collapsed;\n"
         "        PanOAuth.Visibility = Visibility.Collapsed;\n"
         "        PanPasswordLinks.Visibility = Visibility.Collapsed;\n"
+        "        if (ModMain.frmLaunchLeft is not null) ModMain.frmLaunchLeft.BtnLaunch.IsEnabled = true;\n"
     )
     old_reload = old_reload.replace("\n", newline)
     new_reload = new_reload.replace("\n", newline)
