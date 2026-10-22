@@ -668,8 +668,8 @@ def patch_oe_launch_toggle(root: Path) -> None:
                 '                    Visibility="Collapsed">',
                 '            <Border Height="28" CornerRadius="14" Padding="12,0" Background="#EEF6FD">',
                 "                <StackPanel Orientation=\"Horizontal\">",
-                '                    <svgIcon:SvgIcon Width="16" Height="16" Stretch="Uniform" Icon="lucide/id-card"',
-                '                                     IconBrush="#127AE1" VerticalAlignment="Center" />',
+                '                    <Path Width="16" Height="16" Stretch="Uniform" Fill="#127AE1" VerticalAlignment="Center"',
+                '                          Data="M834.5 684.1c-31.2-70.4-98.9-120.9-179.1-127.3 63.5-8.5 112.6-63 112.6-128.8 0-71.8-58.2-130-130-130s-130 58.2-130 130c0 65.9 49 120.3 112.6 128.8-80.2 6.4-148 57-179.1 127.3-8.7 19.7 6 42 27.6 42 12.1 0 22.7-7.5 27.7-18.5 24.3-53.9 78.5-91.5 141.3-91.5s117 37.6 141.3 91.5c5 11.1 15.6 18.5 27.7 18.5 21.4 0 36.1-22.3 27.4-42zM567.9 427.9c0-38.6 31.4-70 70-70s70 31.4 70 70-31.4 70-70 70-70-31.4-70-70zM460.3 347.9H216.9c-16.6 0-30 13.4-30 30s13.4 30 30 30h243.3c16.6 0 30-13.4 30-30 0.1-16.5-13.4-30-29.9-30zM367.4 459.6H216.9c-16.6 0-30 13.4-30 30s13.4 30 30 30h150.4c16.6 0 30-13.4 30-30 0.1-16.6-13.4-30-29.9-30zM297.4 571.2H217c-16.6 0-30 13.4-30 30s13.4 30 30 30h80.4c16.6 0 30-13.4 30-30 0-16.5-13.5-30-30-30zM900 236v552H124V236h776m0-60H124c-33.1 0-60 26.9-60 60v552c0 33.1 26.9 60 60 60h776c33.1 0 60-26.9 60-60V236c0-33.1-26.9-60-60-60z" />',
                 '                    <TextBlock x:Name="LabLoginAuthType" Text="第三方登录" Foreground="#127AE1"',
                 '                               Margin="6,0,0,0" FontSize="13.5" VerticalAlignment="Center" />',
                 "                </StackPanel>",
@@ -967,7 +967,7 @@ def patch_oe_single_profile_flow(root: Path) -> None:
             "                        return;",
             "                }",
             "                // PCL2-CE-patch: OE auth login on launch",
-            "                if (ProfileService.Current is null && pageCurrent == PageType.Auth)",
+            "                if (pageCurrent == PageType.Auth)",
             "                {",
             "                    if (ModMain.frmLoginAuth is null || !await ModMain.frmLoginAuth.EnsureProfileAsync())",
             "                        return;",
@@ -1436,6 +1436,45 @@ def patch_oe_auth_page(root: Path) -> None:
         ]
     )
     code = code.replace(old_tail, "", 1)
+    code = code.replace(
+        "        var address = Config.InstanceAuth.AuthRegisterAddress.ToString();",
+        "        _isRegisterMode = false;" + newline
+        + "        var address = Config.InstanceAuth.AuthRegisterAddress.ToString();",
+        1,
+    )
+    code = code.replace(
+        "        _hasRegisterLink = new HttpValidator().Validate(address).IsValid;",
+        "        _hasRegisterLink = new HttpValidator().Validate(address).IsValid ||"
+        + newline + "                          !string.IsNullOrWhiteSpace(_authServerUrl);",
+        1,
+    )
+    old_click = newline.join(
+        [
+            "    private void Btn_Click(object sender, EventArgs e)",
+            "    {",
+            "        ModBase.OpenWebsite(_isRegisterMode",
+            '            ? Config.InstanceAuth.AuthRegisterAddress.ToString()',
+            '            : Config.InstanceAuth.AuthRegisterAddress.ToString().Replace("/auth/register", "/auth/forgot"));',
+            "    }",
+        ]
+    )
+    new_click = newline.join(
+        [
+            "    private void Btn_Click(object sender, EventArgs e)",
+            "    {",
+            "        var address = Config.InstanceAuth.AuthRegisterAddress.ToString();",
+            "        if (_isRegisterMode)",
+            '            address = address.Replace("/auth/forgot", "/auth/register");',
+            "        else",
+            '            address = address.Replace("/auth/register", "/auth/forgot");',
+            "        if (string.IsNullOrWhiteSpace(address) && !string.IsNullOrWhiteSpace(_authServerUrl))",
+            '            address = _authServerUrl.Replace("/api/yggdrasil", _isRegisterMode ? "/auth/register" : "/auth/forgot");',
+            "        if (!string.IsNullOrWhiteSpace(address))",
+            "            ModBase.OpenWebsite(address);",
+            "    }",
+        ]
+    )
+    code = code.replace(old_click, new_click, 1)
     class_marker = "public partial class PageLoginAuth" + newline + "{"
     code = code.replace(
         class_marker,
@@ -1453,6 +1492,10 @@ def patch_oe_auth_page(root: Path) -> None:
             "    // PCL2-CE-patch: OE auth ensure profile",
             "    public async Task<bool> EnsureProfileAsync()",
             "    {",
+            "        if (string.IsNullOrWhiteSpace(_authServerUrl))",
+            "            _authServerUrl = draggedAuthServer ?? \"\";",
+            "        if (string.IsNullOrWhiteSpace(_authServerUrl) && PageInstanceLeft.McInstance is not null)",
+            "            _authServerUrl = Config.InstanceAuth.AuthServerAddress[PageInstanceLeft.McInstance.PathInstance];",
             "        if (string.IsNullOrWhiteSpace(_authServerUrl))",
             "        {",
             '            HintService.Hint(Lang.Text("Launch.Account.Auth.EmptyFields"), HintType.Error);',
