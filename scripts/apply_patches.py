@@ -704,11 +704,18 @@ def patch_oe_launch_toggle(root: Path) -> None:
                 "",
                 "    private void SyncLoginToggle()",
                 "    {",
-                "        var ms = pageCurrent == PageType.Ms ||",
-                "                 ProfileService.Current?.ProfileType == ProfileType.Microsoft;",
-                "        var offline = pageCurrent == PageType.Offline ||",
-                "                      ProfileService.Current?.ProfileType == ProfileType.Offline;",
-                "        if (!ms && !offline) ms = true;",
+                "        var ms = false;",
+                "        var offline = false;",
+                "        if (pageCurrent == PageType.Offline)",
+                "            offline = true;",
+                "        else if (pageCurrent == PageType.Ms)",
+                "            ms = true;",
+                "        else if (ProfileService.Current?.ProfileType == ProfileType.Microsoft)",
+                "            ms = true;",
+                "        else if (ProfileService.Current?.ProfileType == ProfileType.Offline)",
+                "            offline = true;",
+                "        else",
+                "            ms = true;",
                 "        SetLoginToggle(ms, offline);",
                 "    }",
                 "",
@@ -752,54 +759,118 @@ def patch_oe_launch_toggle(root: Path) -> None:
 
 
 def patch_oe_offline_panel(root: Path) -> None:
-    """Use the official-style editable account combo on the offline page."""
-    path = find_source(root, "PageLoginOffline.xaml", "TextName")
-    text, newline = read_source(path)
-    marker = "<!-- PCL2-CE-patch: OE offline account combo -->"
-    if marker in text:
-        return
-    old = (
-        '    <local:MyTextBox Grid.Row="0" Grid.Column="1" Height="28" x:Name="TextName"\n'
-        '                     ToolTip="{DynamicResource Launch.Account.Offline.PlayerId.ToolTip}" />'
-    )
-    replacement = newline.join(
+    """Recreate official PageLoginLegacy: skin + editable name, standard UUID."""
+    path = find_source(root, "PageLoginOffline.xaml", "PageLoginOffline")
+    _, newline = read_source(path)
+    xaml = newline.join(
         [
-            "    " + marker,
-            '    <local:MyComboBox Grid.Row="0" Grid.Column="1" Height="28" x:Name="TextName"',
-            '                      IsEditable="True" HintText="游戏用户名"',
-            '                      ToolTip="{DynamicResource Launch.Account.Offline.PlayerId.ToolTip}" />',
+            '<Grid x:Class="PCL.PageLoginOffline" Tag="False"',
+            '      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"',
+            '      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"',
+            '      xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"',
+            '      xmlns:d="http://schemas.microsoft.com/expression/blend/2008"',
+            '      xmlns:local="clr-namespace:PCL"',
+            '      mc:Ignorable="d" d:DesignWidth="297.6">',
+            '    <StackPanel Margin="0,0,0,5" x:Name="PanMain">',
+            '        <local:MySkin HorizontalAlignment="Center" x:Name="Skin" HasCape="False" Margin="0,0,0,15" />',
+            '        <local:MyComboBox IsEditable="True" x:Name="TextName" Height="28"',
+            '                          IsTextSearchEnabled="False" HintText="游戏用户名" />',
+            "    </StackPanel>",
+            "</Grid>",
+            "",
         ]
     )
-    old = old.replace("\n", newline)
-    if old not in text:
-        print("  note: offline account field anchor not found; skipped")
-        return
-    text = text.replace(old, replacement, 1)
-    write_source(path, text, path.read_bytes().startswith(b"\xef\xbb\xbf"))
-    print(f"  patched {path.relative_to(root)} (offline account combo)")
+    write_source(path, xaml, path.read_bytes().startswith(b"\xef\xbb\xbf"))
+    print(f"  patched {path.relative_to(root)} (official offline login)")
 
-    code_path = find_source(root, "PageLoginOffline.xaml.cs", "InitializeComponent")
-    code, _ = read_source(code_path)
-    code_marker = "// PCL2-CE-patch: OE offline account combo"
-    if code_marker not in code:
-        file_newline = "\r\n" if "\r\n" in code else "\n"
-        insert = file_newline.join(
-            [
-                "        " + code_marker,
-                "        foreach (var profile in ProfileService.Profiles)",
-                "        {",
-                "            if (profile.ProfileType != ProfileType.Offline) continue;",
-                "            TextName.Items.Add(new MyComboBoxItem { Content = profile.UserName });",
-                "        }",
-            ]
-        )
-        code = code.replace(
-            "        BtnLogin.Click += BtnLogin_Click;",
-            "        BtnLogin.Click += BtnLogin_Click;" + file_newline + insert,
-            1,
-        )
-        write_source(code_path, code, code_path.read_bytes().startswith(b"\xef\xbb\xbf"))
-        print(f"  patched {code_path.relative_to(root)} (offline account items)")
+    code_path = find_source(root, "PageLoginOffline.xaml.cs", "PageLoginOffline")
+    _, code_newline = read_source(code_path)
+    code = code_newline.join(
+        [
+            "using System;",
+            "using System.Linq;",
+            "using System.Threading.Tasks;",
+            "using System.Windows;",
+            "using PCL.Core.App.Localization;",
+            "using PCL.Core.Minecraft.Profile;",
+            "using PCL.Core.Minecraft.Profile.Models;",
+            "using PCL.Core.Utils.Validate;",
+            "",
+            "namespace PCL;",
+            "",
+            "public partial class PageLoginOffline",
+            "{",
+            "    public static string PreviewName = \"\";",
+            "",
+            "    public PageLoginOffline()",
+            "    {",
+            "        InitializeComponent();",
+            "        Skin.loader = PageLaunchLeft.skinLegacy;",
+            "        TextName.TextChanged += (_, _) => RefreshPreview();",
+            "        Loaded += (_, _) => RefreshPreview();",
+            "        foreach (var profile in ProfileService.Profiles)",
+            "        {",
+            "            if (profile.ProfileType == ProfileType.Offline)",
+            "                TextName.Items.Add(new MyComboBoxItem { Content = profile.UserName, Tag = profile });",
+            "        }",
+            "    }",
+            "",
+            "    private async void RefreshPreview()",
+            "    {",
+            "        PreviewName = TextName.Text.Trim();",
+            "        try",
+            "        {",
+            "            Skin.loader.Start();",
+            "            await Task.Run(() => Skin.loader.WaitForExit());",
+            "            if (IsLoaded) Skin.Load();",
+            "        }",
+            "        catch",
+            "        {",
+            "        }",
+            "    }",
+            "",
+            "    /// <summary>Create or select the offline profile for the typed name.</summary>",
+            "    public bool EnsureProfile()",
+            "    {",
+            "        var username = TextName.Text.Trim();",
+            '        if (!new RegexValidator("^[A-z0-9_]{3,16}$").Validate(username).IsValid)',
+            "        {",
+            '            HintService.Hint(Lang.Text("Launch.Account.Offline.InvalidPlayerId.Message"), HintType.Error);',
+            "            return false;",
+            "        }",
+            "",
+            "        var existing = ProfileService.Profiles.FirstOrDefault(profile =>",
+            "            profile.ProfileType == ProfileType.Offline &&",
+            "            string.Equals(profile.UserName, username, StringComparison.OrdinalIgnoreCase));",
+            "        if (existing is not null)",
+            "        {",
+            "            ProfileService.Select(existing);",
+            "            ProfileService.IsCreatingProfile = false;",
+            "            return true;",
+            "        }",
+            "",
+            "        var uuid = ProfileUi.GetOfflineUuid(username);",
+            "        var profile = new McProfile",
+            "        {",
+            "            ProfileType = ProfileType.Offline,",
+            "            Uuid = uuid,",
+            "            UserName = username,",
+            '            Description = "",',
+            "            AccessToken = uuid,",
+            "            ClientToken = uuid,",
+            '            ProfileId = Guid.NewGuid().ToString("N")',
+            "        };",
+            "        ProfileService.Add(profile);",
+            "        ProfileService.IsCreatingProfile = false;",
+            '        HintService.Hint(Lang.Text("Launch.Account.Profile.Created"), HintType.Success);',
+            "        return true;",
+            "    }",
+            "}",
+            "",
+        ]
+    )
+    write_source(code_path, code, code_path.read_bytes().startswith(b"\xef\xbb\xbf"))
+    print(f"  patched {code_path.relative_to(root)} (auto-create offline profile)")
 
 
 def patch_oe_single_profile_flow(root: Path) -> None:
@@ -825,7 +896,7 @@ def patch_oe_single_profile_flow(root: Path) -> None:
                 "            " + marker,
                 "            type = pageCurrent == PageType.Offline ? PageType.Offline : PageType.Ms;",
                 "            if (_launchButtonAction != LaunchButtonAction.Download)",
-                "                BtnLaunch.IsEnabled = false;",
+                "                BtnLaunch.IsEnabled = type == PageType.Offline;",
                 "        }",
             ]
         )
@@ -835,6 +906,51 @@ def patch_oe_single_profile_flow(root: Path) -> None:
         code = code.replace(old, replacement, 1)
         write_source(path, code, path.read_bytes().startswith(b"\xef\xbb\xbf"))
         print(f"  patched {path.relative_to(root)} (single-profile flow)")
+
+    # Allow launching from the offline login page, and create the profile on launch.
+    code, _ = read_source(path)
+    enabled_old = newline.join(
+        [
+            "                if (ProfileService.Current is not null)",
+            "                    BtnLaunch.IsEnabled = true;",
+            "                else",
+            "                    BtnLaunch.IsEnabled = false;",
+        ]
+    )
+    enabled_new = newline.join(
+        [
+            "                if (ProfileService.Current is not null || pageCurrent == PageType.Offline)",
+            "                    BtnLaunch.IsEnabled = true;",
+            "                else",
+            "                    BtnLaunch.IsEnabled = false;",
+        ]
+    )
+    if enabled_old in code:
+        code = code.replace(enabled_old, enabled_new, 1)
+
+    launch_old = newline.join(
+        [
+            "            case LaunchButtonAction.Launch:",
+            "            {",
+            "                if (File.Exists(ModInstanceList.McMcInstanceSelected.PathInstance + \".pclignore\"))",
+        ]
+    )
+    launch_new = newline.join(
+        [
+            "            case LaunchButtonAction.Launch:",
+            "            {",
+            "                // PCL2-CE-patch: OE auto-create offline profile",
+            "                if (ProfileService.Current is null && pageCurrent == PageType.Offline)",
+            "                {",
+            "                    if (ModMain.frmLoginOffline is null || !ModMain.frmLoginOffline.EnsureProfile())",
+            "                        return;",
+            "                }",
+            "                if (File.Exists(ModInstanceList.McMcInstanceSelected.PathInstance + \".pclignore\"))",
+        ]
+    )
+    if launch_old in code:
+        code = code.replace(launch_old, launch_new, 1)
+    write_source(path, code, path.read_bytes().startswith(b"\xef\xbb\xbf"))
 
     skin_path = find_source(root, "PageLoginProfileSkin.xaml.cs", "private void ChangeProfile")
     skin, _ = read_source(skin_path)
@@ -877,6 +993,40 @@ def patch_oe_single_profile_flow(root: Path) -> None:
         print(f"  patched {skin_path.relative_to(root)} (switch account)")
 
 
+def patch_oe_offline_preview(root: Path) -> None:
+    """Feed the typed offline name to the Steve/Alex skin preview loader."""
+    path = find_source(root, "PageLaunchLeft.xaml.cs", "SkinLegacyInput")
+    code, newline = read_source(path)
+    marker = "// PCL2-CE-patch: OE offline preview"
+    if marker in code:
+        return
+    old = newline.join(
+        [
+            "        return new ModBase.EqualableList<string>",
+            "            { ProfileService.Current?.UserName ?? \"\", ProfileService.Current?.Uuid ?? \"\" };",
+        ]
+    )
+    replacement = newline.join(
+        [
+            "        " + marker,
+            "        if (ProfileService.Current?.ProfileType != ProfileType.Offline &&",
+            "            !string.IsNullOrWhiteSpace(PageLoginOffline.PreviewName))",
+            "        {",
+            "            var name = PageLoginOffline.PreviewName;",
+            "            return new ModBase.EqualableList<string> { name, ProfileUi.GetOfflineUuid(name) };",
+            "        }",
+            "        return new ModBase.EqualableList<string>",
+            "            { ProfileService.Current?.UserName ?? \"\", ProfileService.Current?.Uuid ?? \"\" };",
+        ]
+    )
+    if old not in code:
+        print("  note: offline skin input anchor not found; skipped")
+        return
+    code = code.replace(old, replacement, 1)
+    write_source(path, code, path.read_bytes().startswith(b"\xef\xbb\xbf"))
+    print(f"  patched {path.relative_to(root)} (offline skin preview)")
+
+
 def patch_oe_login_panel(root: Path) -> None:
     """Match the official Microsoft login row: account combo + 登录 button."""
     path = find_source(root, "PageLoginMs.xaml", "BtnLogin")
@@ -917,6 +1067,11 @@ def patch_oe_login_panel(root: Path) -> None:
         print("  note: official login row anchor not found; skipped")
         return
     text = text.replace(old, replacement, 1)
+    text = text.replace(
+        '<local:MyTextButton x:Name="BtnBack"',
+        '<local:MyTextButton x:Name="BtnBack" Visibility="Collapsed"',
+        1,
+    )
     write_source(path, text, path.read_bytes().startswith(b"\xef\xbb\xbf"))
     print(f"  patched {path.relative_to(root)} (official login row)")
 
@@ -979,6 +1134,11 @@ def patch_oe_login_panel(root: Path) -> None:
             print("  note: login click anchor not found; skipped")
             return
         code = code.replace(login_old, login_new, 1)
+        code = code.replace(
+            "                    BtnBack.Visibility = Visibility.Visible;",
+            "                    BtnBack.Visibility = Visibility.Collapsed;",
+            1,
+        )
         delete_handler = file_newline.join(
             [
                 "    // PCL2-CE-patch: OE delete account",
@@ -1599,6 +1759,7 @@ def main() -> int:
             patch_oe_single_profile_flow(root)
             patch_oe_login_panel(root)
             patch_oe_offline_panel(root)
+            patch_oe_offline_preview(root)
             patch_oe_shell(root)
             patch_oe_settings_order(root)
             patch_oe_more_pages(root)
