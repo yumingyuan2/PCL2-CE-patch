@@ -642,6 +642,67 @@ def patch_oe_launch_toggle(root: Path) -> None:
         print(f"  patched {code_path.relative_to(root)} (login type handlers)")
 
 
+def patch_oe_more_pages(root: Path) -> None:
+    """Move About/Feedback into the More (Tools) page for OE."""
+    xaml_path = find_source(root, "PageToolsLeft.xaml", "ItemTest")
+    xaml, _ = read_source(xaml_path)
+    marker = "<!-- PCL2-CE-patch: OE more pages -->"
+    if marker not in xaml:
+        # The file may use CRLF; compute its newline explicitly.
+        file_newline = "\r\n" if "\r\n" in xaml else "\n"
+        anchor = f"    </StackPanel>{file_newline}    </local:MyPageLeft>"
+        if anchor not in xaml:
+            anchor = f"    </StackPanel>{file_newline}</local:MyPageLeft>"
+        block = file_newline.join(
+            [
+                "        " + marker,
+                '        <TextBlock Text="关于与反馈" Margin="13,5,5,3" Opacity="0.6" FontSize="12" />',
+                '        <local:MyListItem x:Name="ItemAbout" IsScaleAnimationEnabled="False" Type="RadioBox"',
+                '                           Tag="4" Check="PageCheck" MinPaddingRight="35" Height="36"',
+                '                           Title="{DynamicResource Setup.Left.Item.About}"',
+                '                           SvgIcon="lucide/info" />',
+                '        <local:MyListItem x:Name="ItemFeedback" IsScaleAnimationEnabled="False" Type="RadioBox"',
+                '                           Tag="6" Check="PageCheck" MinPaddingRight="35" Height="36"',
+                '                           Title="{DynamicResource Setup.Left.Item.Feedback}"',
+                '                           SvgIcon="lucide/message-circle" />',
+                "",
+            ]
+        )
+        if anchor not in xaml:
+            raise PatchError("Could not find the OE More page anchor")
+        xaml = xaml.replace(anchor, block + anchor, 1)
+        write_source(xaml_path, xaml, xaml_path.read_bytes().startswith(b"\xef\xbb\xbf"))
+        print(f"  patched {xaml_path.relative_to(root)} (About/Feedback in More)")
+
+    code_path = find_source(root, "PageToolsLeft.xaml.cs", "PageGet")
+    code, _ = read_source(code_path)
+    code_marker = "// PCL2-CE-patch: OE more pages"
+    if code_marker not in code:
+        file_newline = "\r\n" if "\r\n" in code else "\n"
+        cases = file_newline.join(
+            [
+                "            " + code_marker,
+                "            case FormMain.PageSubType.SetupAbout:",
+                "            {",
+                "                ModMain.frmSetupAbout ??= new PageSetupAbout();",
+                "                return ModMain.frmSetupAbout;",
+                "            }",
+                "            case FormMain.PageSubType.SetupFeedback:",
+                "            {",
+                "                ModMain.frmSetupFeedback ??= new PageSetupFeedback();",
+                "                return ModMain.frmSetupFeedback;",
+                "            }",
+                "",
+            ]
+        )
+        anchor = "            default:"
+        if anchor not in code:
+            raise PatchError("Could not find the PageTools PageGet default case")
+        code = code.replace(anchor, cases + anchor, 1)
+        write_source(code_path, code, code_path.read_bytes().startswith(b"\xef\xbb\xbf"))
+        print(f"  patched {code_path.relative_to(root)} (About/Feedback routing)")
+
+
 def patch_oe_about_footer(root: Path) -> None:
     try:
         path = find_source(root, "PageSetupAbout.xaml", "MyScrollViewer")
@@ -876,6 +937,7 @@ def main() -> int:
         if args.edition == "oe":
             patch_oe_launch_toggle(root)
             patch_oe_shell(root)
+            patch_oe_more_pages(root)
             patch_oe_about_footer(root)
         asset_prefix = "PCL2_OE" if args.edition == "oe" else "PCL2_CE"
         release_suffix = "-oe-patched" if args.edition == "oe" else "-patched"
