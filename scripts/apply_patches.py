@@ -794,6 +794,69 @@ def patch_oe_login_panel(root: Path) -> None:
     print(f"  patched {path.relative_to(root)} (official login row)")
 
 
+def patch_oe_settings_order(root: Path) -> None:
+    """Collapse OE settings into 启动 / 个性化 / 其他 like official PCL."""
+    path = find_source(root, "PageSetupLeft.xaml", "TextAboutCategory")
+    text, newline = read_source(path)
+    marker = "<!-- PCL2-CE-patch: OE settings order -->"
+    if marker in text:
+        return
+
+    game = re.search(
+        r"^[ \t]*<local:MyListItem x:Name=\"ItemGameLink\".*?</local:MyListItem>[ \t]*\r?\n",
+        text,
+        re.MULTILINE | re.DOTALL,
+    )
+    if game is None:
+        print("  note: settings GameLink item not found; skipped")
+        return
+    game_link = game.group(0).rstrip("\r\n")
+    text = text[: game.start()] + text[game.end() :]
+
+    # Remove the old “工具” category header and its trailing blank line.
+    text = re.sub(
+        r"^[ \t]*<TextBlock[^\n]*Setup\.Left\.Category\.Tools[^\n]*\r?\n(?:[ \t]*\r?\n)?",
+        "",
+        text,
+        count=1,
+        flags=re.MULTILINE,
+    )
+    # Collapse the extra blank line left before “启动器/个性化”.
+    text = re.sub(
+        r"(?:\r?\n){2,}(?=[ \t]*<TextBlock[^\n]*Category\.Launcher)",
+        newline,
+        text,
+        count=1,
+    )
+
+    # Put the link entry under the “其他” category.
+    about = re.search(
+        r"^[ \t]*<TextBlock[^\n]*Category\.About[^\n]*\r?\n",
+        text,
+        re.MULTILINE,
+    )
+    if about is None:
+        raise PatchError("Could not find the settings About category")
+    insert = newline + "            " + marker + newline + game_link + newline
+    text = text[: about.end()] + insert + text[about.end() :]
+    write_source(path, text, path.read_bytes().startswith(b"\xef\xbb\xbf"))
+    print(f"  patched {path.relative_to(root)} (settings 3-category order)")
+
+    # The category header no longer exists; drop its visibility tuple.
+    ui_path = find_source(root, "PageSetupUI.xaml.cs", "TextToolsCategory")
+    ui_text, _ = read_source(ui_path)
+    ui_text, count = re.subn(
+        r"^[ \t]*\(ModMain\.frmSetupLeft\.TextToolsCategory,[^\n]*\r?\n",
+        "",
+        ui_text,
+        count=1,
+        flags=re.MULTILINE,
+    )
+    if count == 1:
+        write_source(ui_path, ui_text, ui_path.read_bytes().startswith(b"\xef\xbb\xbf"))
+        print(f"  patched {ui_path.relative_to(root)} (removed Tools category visibility)")
+
+
 def patch_oe_more_links(root: Path) -> None:
     """Add the official Help / Vote entries to the More page."""
     path = find_source(root, "PageToolsLeft.xaml", "ItemFeedback")
@@ -1146,6 +1209,7 @@ def main() -> int:
             patch_oe_login_panel(root)
             patch_oe_offline_panel(root)
             patch_oe_shell(root)
+            patch_oe_settings_order(root)
             patch_oe_more_pages(root)
             patch_oe_more_links(root)
             patch_oe_about_footer(root)
