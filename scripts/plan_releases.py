@@ -23,6 +23,7 @@ import json
 import os
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -32,6 +33,8 @@ REPOSITORY = os.environ.get("GITHUB_REPOSITORY", "")
 TOKEN = os.environ.get("GH_TOKEN", "")
 INPUT_TAG = os.environ.get("INPUT_TAG", "").strip()
 FORCE_REBUILD = os.environ.get("FORCE_REBUILD", "").strip().lower() in {"1", "true", "yes"}
+BACKFILL = os.environ.get("BACKFILL", "").strip().lower() in {"1", "true", "yes"}
+MAX_VERSIONS = int(os.environ.get("MAX_VERSIONS", "50"))
 EDITION = os.environ.get("EDITION", "ce").strip().lower()
 ASSET_PREFIX = "PCL2_OE" if EDITION == "oe" else "PCL2_CE"
 RELEASE_SUFFIX = "-oe-patched" if EDITION == "oe" else "-patched"
@@ -79,6 +82,20 @@ def has_complete_patched_release(version: str, configuration: str) -> bool:
     }.issubset(names)
 
 
+def is_supported(tag: str) -> bool:
+    """Only build tags whose source still has the current PCL.Core/ProfileUi shape."""
+    needles = (
+        "Plain Craft Launcher 2/Modules/Minecraft/ProfileUi.cs",
+        "Plain Craft Launcher 2/Pages/PageLaunch/PageLaunchLeft.xaml.cs",
+        "Plain Craft Launcher 2.slnx",
+    )
+    for path in needles:
+        quoted = urllib.parse.quote(path)
+        if api(f"/repos/{UPSTREAM}/contents/{quoted}?ref={urllib.parse.quote(tag)}", allow_not_found=True) is None:
+            return False
+    return True
+
+
 def choose_candidates() -> list[dict]:
     if INPUT_TAG:
         tag = INPUT_TAG if INPUT_TAG.startswith("v") else f"v{INPUT_TAG}"
@@ -95,6 +112,9 @@ def choose_candidates() -> list[dict]:
     ]
     if not published:
         return []
+
+    if BACKFILL:
+        return published[:MAX_VERSIONS]
 
     stable = next((release for release in published if not release.get("prerelease")), None)
     beta = next((release for release in published if release.get("prerelease")), None)
@@ -127,6 +147,9 @@ def main() -> int:
             continue
         version = release_version(tag)
         configuration = release_configuration(release)
+        if BACKFILL and not is_supported(tag):
+            print(f"skip {tag}: source architecture differs from the current PCL.Core/ProfileUi layout")
+            continue
         if not FORCE_REBUILD and has_complete_patched_release(version, configuration):
             print(f"skip {tag}: {patched_tag(version)} already has both patched assets")
             continue
