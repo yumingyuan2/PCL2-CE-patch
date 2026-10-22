@@ -912,6 +912,46 @@ def patch_oe_more_links(root: Path) -> None:
         print(f"  patched {code_path.relative_to(root)} (Help / Vote handlers)")
 
 
+def patch_oe_more_flat(root: Path) -> None:
+    """Remove the old category headers from the More page."""
+    path = find_source(root, "PageToolsLeft.xaml", "ItemGameLink")
+    text, _ = read_source(path)
+    marker = "<!-- PCL2-CE-patch: OE more flat -->"
+    if marker in text:
+        return
+    for needle in ("Tools.Left.Multiplayer", "Tools.Left.Utilities", 'Text="关于与反馈"'):
+        text, count = re.subn(
+            rf"[ \t]*<TextBlock[^>]*{re.escape(needle)}[^>]*/>\r?\n(?:[ \t]*\r?\n)?",
+            "",
+            text,
+            count=1,
+        )
+        if count == 0:
+            print(f"  note: More header {needle!r} not found; skipped")
+    text = text.replace(
+        '<StackPanel Orientation="Vertical" x:Name="PanItem" Margin="0,12,0,0">',
+        '<StackPanel Orientation="Vertical" x:Name="PanItem" Margin="0,12,0,0">\n        ' + marker,
+        1,
+    )
+    write_source(path, text, path.read_bytes().startswith(b"\xef\xbb\xbf"))
+    print(f"  patched {path.relative_to(root)} (flat More list)")
+
+    # Remove the old category-header visibility code in PageSetupUI.
+    ui_path = find_source(root, "PageSetupUI.xaml.cs", "TextGameLinkCategory")
+    ui_text, _ = read_source(ui_path)
+    ui_text, count = re.subn(
+        r"[ \t]*// 处理分类标题\r?\n"
+        r".*?if \(isToolsVisible\) ModMain\.frmToolsLeft\.TextToolsCategory\.Opacity = 0\.6;\r?\n",
+        "",
+        ui_text,
+        count=1,
+        flags=re.DOTALL,
+    )
+    if count == 1:
+        write_source(ui_path, ui_text, ui_path.read_bytes().startswith(b"\xef\xbb\xbf"))
+        print(f"  patched {ui_path.relative_to(root)} (removed More header code)")
+
+
 def patch_oe_more_pages(root: Path) -> None:
     """Move About/Feedback into the More (Tools) page for OE."""
     xaml_path = find_source(root, "PageToolsLeft.xaml", "ItemTest")
@@ -1212,6 +1252,7 @@ def main() -> int:
             patch_oe_settings_order(root)
             patch_oe_more_pages(root)
             patch_oe_more_links(root)
+            patch_oe_more_flat(root)
             patch_oe_about_footer(root)
         asset_prefix = "PCL2_OE" if args.edition == "oe" else "PCL2_CE"
         release_suffix = "-oe-patched" if args.edition == "oe" else "-patched"
