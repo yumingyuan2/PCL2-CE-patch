@@ -704,6 +704,57 @@ def patch_oe_launch_toggle(root: Path) -> None:
         print(f"  patched {code_path.relative_to(root)} (login type handlers)")
 
 
+def patch_oe_offline_panel(root: Path) -> None:
+    """Use the official-style editable account combo on the offline page."""
+    path = find_source(root, "PageLoginOffline.xaml", "TextName")
+    text, newline = read_source(path)
+    marker = "<!-- PCL2-CE-patch: OE offline account combo -->"
+    if marker in text:
+        return
+    old = (
+        '    <local:MyTextBox Grid.Row="0" Grid.Column="1" Height="28" x:Name="TextName"\n'
+        '                     ToolTip="{DynamicResource Launch.Account.Offline.PlayerId.ToolTip}" />'
+    )
+    replacement = newline.join(
+        [
+            "    " + marker,
+            '    <local:MyComboBox Grid.Row="0" Grid.Column="1" Height="28" x:Name="TextName"',
+            '                      IsEditable="True" HintText="游戏用户名"',
+            '                      ToolTip="{DynamicResource Launch.Account.Offline.PlayerId.ToolTip}" />',
+        ]
+    )
+    old = old.replace("\n", newline)
+    if old not in text:
+        print("  note: offline account field anchor not found; skipped")
+        return
+    text = text.replace(old, replacement, 1)
+    write_source(path, text, path.read_bytes().startswith(b"\xef\xbb\xbf"))
+    print(f"  patched {path.relative_to(root)} (offline account combo)")
+
+    code_path = find_source(root, "PageLoginOffline.xaml.cs", "InitializeComponent")
+    code, _ = read_source(code_path)
+    code_marker = "// PCL2-CE-patch: OE offline account combo"
+    if code_marker not in code:
+        file_newline = "\r\n" if "\r\n" in code else "\n"
+        insert = file_newline.join(
+            [
+                "        " + code_marker,
+                "        foreach (var profile in ProfileService.Profiles)",
+                "        {",
+                "            if (profile.ProfileType != ProfileType.Offline) continue;",
+                "            TextName.Items.Add(new MyComboBoxItem { Content = profile.UserName });",
+                "        }",
+            ]
+        )
+        code = code.replace(
+            "        BtnLogin.Click += BtnLogin_Click;",
+            "        BtnLogin.Click += BtnLogin_Click;" + file_newline + insert,
+            1,
+        )
+        write_source(code_path, code, code_path.read_bytes().startswith(b"\xef\xbb\xbf"))
+        print(f"  patched {code_path.relative_to(root)} (offline account items)")
+
+
 def patch_oe_login_panel(root: Path) -> None:
     """Match the official Microsoft login row: account combo + 登录 button."""
     path = find_source(root, "PageLoginMs.xaml", "BtnLogin")
@@ -1038,6 +1089,7 @@ def main() -> int:
         if args.edition == "oe":
             patch_oe_launch_toggle(root)
             patch_oe_login_panel(root)
+            patch_oe_offline_panel(root)
             patch_oe_shell(root)
             patch_oe_more_pages(root)
             patch_oe_about_footer(root)
