@@ -777,7 +777,8 @@ def patch_oe_login_panel(root: Path) -> None:
             "                <ColumnDefinition />",
             "                <ColumnDefinition Width=\"Auto\" />",
             "            </Grid.ColumnDefinitions>",
-            '            <local:MyComboBox x:Name="ComboAccounts" Height="28" Margin="0,0,0,0">',
+            '            <local:MyComboBox x:Name="ComboAccounts" Height="28" Margin="0,0,0,0"',
+            '                                SelectionChanged="ComboAccounts_SelectionChanged">',
             '                <local:MyComboBoxItem Content="添加新账号" />',
             "            </local:MyComboBox>",
             '            <local:MyButton x:Name="BtnLogin" Grid.Column="1" Height="28" Width="60"',
@@ -792,6 +793,59 @@ def patch_oe_login_panel(root: Path) -> None:
     text = text.replace(old, replacement, 1)
     write_source(path, text, path.read_bytes().startswith(b"\xef\xbb\xbf"))
     print(f"  patched {path.relative_to(root)} (official login row)")
+
+    code_path = find_source(root, "PageLoginMs.xaml.cs", "InitializeComponent")
+    code, _ = read_source(code_path)
+    code_marker = "// PCL2-CE-patch: OE login accounts"
+    if code_marker not in code:
+        if "using System.Windows.Controls;" not in code:
+            code = code.replace(
+                "using System.Windows;",
+                "using System.Windows;\nusing System.Windows.Controls;",
+                1,
+            )
+        if "using PCL.Core.Minecraft.Profile.Models;" not in code:
+            code = code.replace(
+                "using PCL.Core.Minecraft.Profile;",
+                "using PCL.Core.Minecraft.Profile;\nusing PCL.Core.Minecraft.Profile.Models;",
+                1,
+            )
+        file_newline = "\r\n" if "\r\n" in code else "\n"
+        insert = file_newline.join(
+            [
+                "        " + code_marker,
+                "        foreach (var profile in ProfileService.Profiles)",
+                "        {",
+                "            if (profile.ProfileType == ProfileType.Microsoft)",
+                "                ComboAccounts.Items.Add(new MyComboBoxItem { Content = profile.UserName, Tag = profile });",
+                "        }",
+                "        ComboAccounts.SelectedIndex = 0;",
+            ]
+        )
+        code = code.replace(
+            "        InitializeComponent();",
+            "        InitializeComponent();" + file_newline + insert,
+            1,
+        )
+        handler = file_newline.join(
+            [
+                "    " + code_marker,
+                "    private void ComboAccounts_SelectionChanged(object sender, SelectionChangedEventArgs e)",
+                "    {",
+                "        if (!IsLoaded) return;",
+                "        if (ComboAccounts.SelectedItem is MyComboBoxItem { Tag: McProfile profile })",
+                "        {",
+                "            ProfileService.Select(profile);",
+                "            ProfileService.IsCreatingProfile = false;",
+                "            ModBase.RunInUi(() => ModMain.frmLaunchLeft.RefreshPage(true));",
+                "        }",
+                "    }",
+                "",
+            ]
+        )
+        code = code.replace("    private void BtnBack_Click", handler + "    private void BtnBack_Click", 1)
+        write_source(code_path, code, code_path.read_bytes().startswith(b"\xef\xbb\xbf"))
+        print(f"  patched {code_path.relative_to(root)} (login account list)")
 
 
 def patch_oe_settings_order(root: Path) -> None:
