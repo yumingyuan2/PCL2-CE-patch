@@ -663,6 +663,18 @@ def patch_oe_launch_toggle(root: Path) -> None:
                 "                </StackPanel>",
                 "            </Border>",
                 "        </StackPanel>",
+                '        <StackPanel x:Name="PanLoginAuthType" Grid.Row="0" Grid.ColumnSpan="5"',
+                '                    Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,24,0,0"',
+                '                    Visibility="Collapsed">',
+                '            <Border Height="28" CornerRadius="14" Padding="12,0" Background="#EEF6FD">',
+                "                <StackPanel Orientation=\"Horizontal\">",
+                '                    <svgIcon:SvgIcon Width="16" Height="16" Stretch="Uniform" Icon="lucide/id-card"',
+                '                                     IconBrush="#127AE1" VerticalAlignment="Center" />',
+                '                    <TextBlock x:Name="LabLoginAuthType" Text="第三方登录" Foreground="#127AE1"',
+                '                               Margin="6,0,0,0" FontSize="13.5" VerticalAlignment="Center" />',
+                "                </StackPanel>",
+                "            </Border>",
+                "        </StackPanel>",
                 "",
             ]
         )
@@ -707,6 +719,11 @@ def patch_oe_launch_toggle(root: Path) -> None:
                 "        var isAuth = pageCurrent == PageType.Auth ||",
                 "                     ProfileService.Current?.ProfileType is ProfileType.Authlib or ProfileType.YggdrasilConnect;",
                 "        PanLoginToggle.Visibility = isAuth ? Visibility.Collapsed : Visibility.Visible;",
+                "        PanLoginAuthType.Visibility = isAuth ? Visibility.Visible : Visibility.Collapsed;",
+                "        if (isAuth)",
+                "            LabLoginAuthType.Text = string.IsNullOrWhiteSpace(PageLoginAuth.ActiveServerName)",
+                '                ? "第三方登录"',
+                '                : PageLoginAuth.ActiveServerName + " 登录";',
                 "        var ms = false;",
                 "        var offline = false;",
                 "        if (pageCurrent == PageType.Offline)",
@@ -922,7 +939,8 @@ def patch_oe_single_profile_flow(root: Path) -> None:
     )
     enabled_new = newline.join(
         [
-            "                if (ProfileService.Current is not null || pageCurrent == PageType.Offline)",
+            "                if (ProfileService.Current is not null || pageCurrent == PageType.Offline ||",
+            "                    pageCurrent == PageType.Auth)",
             "                    BtnLaunch.IsEnabled = true;",
             "                else",
             "                    BtnLaunch.IsEnabled = false;",
@@ -948,11 +966,18 @@ def patch_oe_single_profile_flow(root: Path) -> None:
             "                    if (ModMain.frmLoginOffline is null || !ModMain.frmLoginOffline.EnsureProfile())",
             "                        return;",
             "                }",
+            "                // PCL2-CE-patch: OE auth login on launch",
+            "                if (ProfileService.Current is null && pageCurrent == PageType.Auth)",
+            "                {",
+            "                    if (ModMain.frmLoginAuth is null || !await ModMain.frmLoginAuth.EnsureProfileAsync())",
+            "                        return;",
+            "                }",
             "                if (File.Exists(ModInstanceList.McMcInstanceSelected.PathInstance + \".pclignore\"))",
         ]
     )
     if launch_old in code:
         code = code.replace(launch_old, launch_new, 1)
+    code = code.replace("    public void LaunchButtonClick()", "    public async void LaunchButtonClick()", 1)
     write_source(path, code, path.read_bytes().startswith(b"\xef\xbb\xbf"))
 
     skin_path = find_source(root, "PageLoginProfileSkin.xaml.cs", "private void ChangeProfile")
@@ -1294,6 +1319,174 @@ def patch_oe_more_links(root: Path) -> None:
         code = code.replace(anchor, method + anchor, 1)
         write_source(code_path, code, code_path.read_bytes().startswith(b"\xef\xbb\xbf"))
         print(f"  patched {code_path.relative_to(root)} (Help / Vote handlers)")
+
+
+def patch_oe_auth_page(root: Path) -> None:
+    """Recreate official PageLoginAuth: email/password/remember/register."""
+    path = find_source(root, "PageLoginAuth.xaml", "PageLoginAuth")
+    _, newline = read_source(path)
+    xaml = newline.join(
+        [
+            '<Grid x:Class="PCL.PageLoginAuth" Tag="False"',
+            '      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"',
+            '      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"',
+            '      xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"',
+            '      xmlns:d="http://schemas.microsoft.com/expression/blend/2008"',
+            '      xmlns:local="clr-namespace:PCL"',
+            '      mc:Ignorable="d" d:DesignWidth="317.6" Margin="0,0,0,-2">',
+            "    <Grid.RowDefinitions>",
+            '        <RowDefinition Height="Auto" />',
+            '        <RowDefinition Height="10" />',
+            '        <RowDefinition Height="Auto" />',
+            '        <RowDefinition Height="Auto" />',
+            "    </Grid.RowDefinitions>",
+            "    <Grid.ColumnDefinitions>",
+            "        <ColumnDefinition />",
+            '        <ColumnDefinition Width="224" />',
+            "    </Grid.ColumnDefinitions>",
+            '    <local:MyComboBox Grid.Row="0" Grid.Column="1" IsEditable="True" Height="28" x:Name="TextName" />',
+            '    <TextBlock x:Name="TextNameTitle" Text="邮箱" Grid.Row="0" VerticalAlignment="Center" />',
+            '    <PasswordBox Grid.Row="2" Grid.Column="1" x:Name="TextPass" />',
+            '    <TextBlock x:Name="TextPassTitle" Text="密码" Grid.Row="2" VerticalAlignment="Center" />',
+            '    <local:MyCheckBox x:Name="CheckRemember" Tag="LoginRemember" Height="20" Margin="-1,12,80,0"',
+            '                     Text="记住密码" Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2" />',
+            '    <local:MyTextButton Margin="0,12,2,0" x:Name="BtnLink" Content="注册账号" Grid.Row="3"',
+            '                        HorizontalAlignment="Right" Grid.Column="1" Padding="20,0,0,0"',
+            '                        HorizontalContentAlignment="Right" FontSize="13" VerticalContentAlignment="Center" />',
+            "    <Grid x:Name=\"PanHidden\" Grid.RowSpan=\"4\" Grid.ColumnSpan=\"2\" Visibility=\"Collapsed\">",
+            '        <Grid x:Name="PanOAuth">',
+            '            <local:MyButton x:Name="BtnOAuth" Text="OAuth 登录" />',
+            '            <local:MyButton x:Name="BtnBackOAuth" Text="返回" />',
+            '            <local:MyTextButton x:Name="BtnUsePassword" Text="使用密码" />',
+            '            <local:MyTextButton x:Name="BtnUseOAuth" Text="使用 OAuth" />',
+            '            <local:MyTextButton x:Name="BtnWebsite" Text="官网" />',
+            '            <local:MyTextButton x:Name="BtnPasswordWebsite" Text="官网" />',
+            '            <Grid x:Name="PanPasswordLinks" />',
+            "        </Grid>",
+            '        <local:MyButton x:Name="BtnLogin" Text="登录" />',
+            '        <local:MyButton x:Name="BtnBack" Text="返回" />',
+            "    </Grid>",
+            "</Grid>",
+            "",
+        ]
+    )
+    write_source(path, xaml, path.read_bytes().startswith(b"\xef\xbb\xbf"))
+    print(f"  patched {path.relative_to(root)} (official Auth form)")
+
+    code_path = find_source(root, "PageLoginAuth.xaml.cs", "PageLoginAuth")
+    code, _ = read_source(code_path)
+    marker = "// PCL2-CE-patch: OE auth page"
+    if marker in code:
+        return
+    # Force the simple password mode and keep every OAuth/back control hidden.
+    old_reload = (
+        "    private void Reload()\n"
+        "    {\n"
+        '        _authServerUrl = draggedAuthServer ?? "";\n'
+        "        var knownOAuthSupport = draggedAuthServerOAuthSupported;\n"
+        "        draggedAuthServer = null;\n"
+        "        draggedAuthServerOAuthSupported = null;\n"
+        "        _oauthSupported = knownOAuthSupport;\n"
+        "        _UpdateOAuthEntryVisibility();\n"
+        "        _SetLoginMode(knownOAuthSupport == true);\n"
+    )
+    new_reload = (
+        "    private void Reload()\n"
+        "    {\n"
+        "        // PCL2-CE-patch: OE auth page\n"
+        '        _authServerUrl = draggedAuthServer ?? "";\n'
+        '        ActiveServerName = _authServerUrl.Contains("littleskin", StringComparison.OrdinalIgnoreCase) ? "LittleSkin" : "第三方登录";\n'
+        '        if (ModMain.frmLaunchLeft is not null) ModMain.frmLaunchLeft.LabLoginAuthType.Text = ActiveServerName + " 登录";\n'
+        "        draggedAuthServer = null;\n"
+        "        draggedAuthServerOAuthSupported = null;\n"
+        "        _oauthSupported = false;\n"
+        "        _SetLoginMode(false);\n"
+        "        BtnLogin.Visibility = Visibility.Collapsed;\n"
+        "        BtnBack.Visibility = Visibility.Collapsed;\n"
+        "        BtnOAuth.Visibility = Visibility.Collapsed;\n"
+        "        BtnBackOAuth.Visibility = Visibility.Collapsed;\n"
+        "        BtnUsePassword.Visibility = Visibility.Collapsed;\n"
+        "        BtnUseOAuth.Visibility = Visibility.Collapsed;\n"
+        "        BtnWebsite.Visibility = Visibility.Collapsed;\n"
+        "        BtnPasswordWebsite.Visibility = Visibility.Collapsed;\n"
+        "        PanOAuth.Visibility = Visibility.Collapsed;\n"
+        "        PanPasswordLinks.Visibility = Visibility.Collapsed;\n"
+    )
+    old_reload = old_reload.replace("\n", newline)
+    new_reload = new_reload.replace("\n", newline)
+    if old_reload not in code:
+        print("  note: Auth Reload anchor not found; skipped code patch")
+        return
+    code = code.replace(old_reload, new_reload, 1)
+    old_tail = newline.join(
+        [
+            "        if (knownOAuthSupport is null && !string.IsNullOrWhiteSpace(_authServerUrl))",
+            "        {",
+            "            var server = _authServerUrl;",
+            "            Dispatcher.BeginInvoke(new Func<Task>(async () =>",
+            "            {",
+            "                var supported = await IsOAuthSupportedAsync(server).ConfigureAwait(true);",
+            "                if (!string.Equals(_authServerUrl, server, StringComparison.OrdinalIgnoreCase))",
+            "                    return;",
+            "                _oauthSupported = supported;",
+            "                _UpdateOAuthEntryVisibility();",
+            "                _SetLoginMode(supported);",
+            "            }));",
+            "        }",
+        ]
+    )
+    code = code.replace(old_tail, "", 1)
+    class_marker = "public partial class PageLoginAuth" + newline + "{"
+    code = code.replace(
+        class_marker,
+        class_marker + newline + "    public static string ActiveServerName = \"\";",
+        1,
+    )
+    code = code.replace(
+        "                BtnBack.Visibility = Visibility.Visible;",
+        "                BtnBack.Visibility = Visibility.Collapsed;",
+        1,
+    )
+    # Add the launch-time login entry point.
+    ensure = newline.join(
+        [
+            "    // PCL2-CE-patch: OE auth ensure profile",
+            "    public async Task<bool> EnsureProfileAsync()",
+            "    {",
+            "        if (string.IsNullOrWhiteSpace(_authServerUrl))",
+            "        {",
+            '            HintService.Hint(Lang.Text("Launch.Account.Auth.EmptyFields"), HintType.Error);',
+            "            return false;",
+            "        }",
+            "        if (string.IsNullOrWhiteSpace(TextName.Text) || string.IsNullOrWhiteSpace(TextPass.Password))",
+            "        {",
+            '            HintService.Hint(Lang.Text("Launch.Account.Auth.EmptyFields"), HintType.Error);',
+            "            return false;",
+            "        }",
+            "        var loginData = new ModLaunch.McLoginServer(ModLaunch.McLoginType.Auth)",
+            "        {",
+            "            BaseUrl = await ApiLocation.TryRequestAsync(_authServerUrl).ConfigureAwait(true),",
+            '            UserName = TextName.Text, Password = TextPass.Password, Description = "Authlib-Injector",',
+            "            LoginType = ModLaunch.McLoginType.Auth",
+            "        };",
+            "        ProfileService.IsCreatingProfile = true;",
+            "        ModLaunch.mcLoginAuthLoader.Start(loginData, true);",
+            "        while (ModLaunch.mcLoginAuthLoader.State == ModBase.LoadState.Loading)",
+            "            await Task.Delay(50);",
+            "        if (ModLaunch.mcLoginAuthLoader.State == ModBase.LoadState.Finished)",
+            "        {",
+            "            ModMain.frmLaunchLeft.RefreshPage(true);",
+            "            return true;",
+            "        }",
+            "        ProfileService.IsCreatingProfile = false;",
+            "        return false;",
+            "    }",
+            "",
+        ]
+    )
+    code = code.replace("    private void BtnBack_Click", ensure + "    private void BtnBack_Click", 1)
+    write_source(code_path, code, code_path.read_bytes().startswith(b"\xef\xbb\xbf"))
+    print(f"  patched {code_path.relative_to(root)} (official Auth behavior)")
 
 
 def patch_oe_auth_entry(root: Path) -> None:
@@ -1796,6 +1989,7 @@ def main() -> int:
             patch_oe_offline_panel(root)
             patch_oe_offline_preview(root)
             patch_oe_shell(root)
+            patch_oe_auth_page(root)
             patch_oe_auth_entry(root)
             patch_oe_settings_order(root)
             patch_oe_more_pages(root)
