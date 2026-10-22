@@ -912,6 +912,51 @@ def patch_oe_more_links(root: Path) -> None:
         print(f"  patched {code_path.relative_to(root)} (Help / Vote handlers)")
 
 
+def patch_oe_about_actions(root: Path) -> None:
+    """Match the official About card's 检查更新 action."""
+    path = find_source(root, "PageSetupAbout.xaml", "Setup.About.SourceCode")
+    xaml, newline = read_source(path)
+    marker = "<!-- PCL2-CE-patch: OE about update -->"
+    if marker not in xaml:
+        source_button = re.search(
+            r'[ \t]*<local:MyButton\s+Grid\.Row="2"\s+Grid\.Column="2".*?Setup\.About\.SourceCode.*?/>',
+            xaml,
+            re.DOTALL,
+        )
+        if source_button is None:
+            print("  note: About source button not found; skipped")
+            return
+        replacement = newline.join(
+            [
+                "                    " + marker,
+                '                    <local:MyButton Grid.Row="2" Grid.Column="2" Height="35"',
+                '                                    Text="检查更新" Click="BtnCheckUpdate_Click" />',
+            ]
+        )
+        xaml = xaml[: source_button.start()] + replacement + xaml[source_button.end() :]
+        write_source(path, xaml, path.read_bytes().startswith(b"\xef\xbb\xbf"))
+        print(f"  patched {path.relative_to(root)} (About update button)")
+
+    code_path = find_source(root, "PageSetupAbout.xaml.cs", "ImgPCLLogo_Click")
+    code, _ = read_source(code_path)
+    code_marker = "// PCL2-CE-patch: OE about update"
+    if code_marker not in code:
+        file_newline = "\r\n" if "\r\n" in code else "\n"
+        method = file_newline.join(
+            [
+                "    " + code_marker,
+                "    private void BtnCheckUpdate_Click(object sender, RoutedEventArgs e)",
+                "    {",
+                "        ModMain.frmMain.PageChange(FormMain.PageType.Setup, FormMain.PageSubType.SetupUpdate);",
+                "    }",
+                "",
+            ]
+        )
+        code = code.replace("    private void ImgPCLLogo_Click", method + "    private void ImgPCLLogo_Click", 1)
+        write_source(code_path, code, code_path.read_bytes().startswith(b"\xef\xbb\xbf"))
+        print(f"  patched {code_path.relative_to(root)} (About update handler)")
+
+
 def patch_oe_hide_font_card(root: Path) -> None:
     """Hide the CE-only font card so 个性化 matches official PCL."""
     path = find_source(root, "PageSetupUI.xaml", "CardFont")
@@ -1311,6 +1356,7 @@ def main() -> int:
             patch_oe_more_pages(root)
             patch_oe_more_links(root)
             patch_oe_more_flat(root)
+            patch_oe_about_actions(root)
             patch_oe_hide_font_card(root)
             patch_oe_more_order(root)
             patch_oe_about_footer(root)
