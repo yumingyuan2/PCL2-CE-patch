@@ -561,6 +561,53 @@ def patch_ce_announce(root: Path) -> None:
     print(f"  patched {path.relative_to(root)} (suppressed CE update announcement)")
 
 
+def patch_page_load_smoothness(root: Path) -> None:
+    """Defer heavy first-load work so switching pages renders before it blocks."""
+    download_path = find_source(root, "PageDownloadInstall.xaml.cs", "private void Init()")
+    code, _ = read_source(download_path)
+    marker = "// PCL2-CE-patch: defer download init"
+    if marker not in code:
+        if "using System.Windows.Threading;" not in code:
+            code = code.replace(
+                "using System.Windows;",
+                "using System.Windows;\nusing System.Windows.Threading;",
+                1,
+            )
+        code = code.replace(
+            "    private void Init()",
+            "    " + marker + "\n"
+            "    private void Init()\n"
+            "    {\n"
+            "        Dispatcher.BeginInvoke(new Action(InitCore), DispatcherPriority.Background);\n"
+            "    }\n"
+            "\n"
+            "    private void InitCore()",
+            1,
+        )
+        write_source(download_path, code, download_path.read_bytes().startswith(b"\xef\xbb\xbf"))
+        print(f"  patched {download_path.relative_to(root)} (defer download init)")
+
+    setup_path = find_source(root, "PageSetupUI.xaml.cs", "Loaded += PageSetupUI_Loaded;")
+    code, _ = read_source(setup_path)
+    marker = "// PCL2-CE-patch: defer setup load"
+    if marker not in code:
+        if "using System.Windows.Threading;" not in code:
+            code = code.replace(
+                "using System.Windows;",
+                "using System.Windows;\nusing System.Windows.Threading;",
+                1,
+            )
+        code = code.replace(
+            "        Loaded += PageSetupUI_Loaded;",
+            "        " + marker + "\n"
+            "        Loaded += (_, e) => Dispatcher.BeginInvoke(\n"
+            "            new Action(() => PageSetupUI_Loaded(null, e)), DispatcherPriority.Background);",
+            1,
+        )
+        write_source(setup_path, code, setup_path.read_bytes().startswith(b"\xef\xbb\xbf"))
+        print(f"  patched {setup_path.relative_to(root)} (defer setup load)")
+
+
 def patch_oe_launch_toggle(root: Path) -> None:
     """Recreate the official 正版/离线 pill switch above the login panel."""
     xaml_path = find_source(root, "PageLaunchLeft.xaml", "PanLogin")
@@ -591,7 +638,7 @@ def patch_oe_launch_toggle(root: Path) -> None:
             [
                 "        " + marker,
                 '        <StackPanel x:Name="PanLoginToggle" Grid.Row="0" Grid.ColumnSpan="5"',
-                '                    Orientation="Horizontal" HorizontalAlignment="Left" Margin="40,24,0,0">',
+                '                    Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,24,0,0">',
                 '            <Border x:Name="BtnLoginMs" Height="28" CornerRadius="14" Padding="10,0"',
                 '                    Margin="0,0" Background="#127AE1" Cursor="Hand"',
                 '                    MouseLeftButtonUp="BtnLoginMs_Click">',
@@ -1437,6 +1484,7 @@ def main() -> int:
         patch_profile_creation_unlock(root)
         patch_ce_announce(root)
         patch_remove_prompts(root)
+        patch_page_load_smoothness(root)
         if args.edition == "oe":
             patch_oe_launch_toggle(root)
             patch_oe_login_panel(root)
@@ -1446,7 +1494,6 @@ def main() -> int:
             patch_oe_more_pages(root)
             patch_oe_more_links(root)
             patch_oe_more_flat(root)
-            patch_oe_more_default(root)
             patch_oe_about_actions(root)
             patch_oe_hide_font_card(root)
             patch_oe_more_order(root)
