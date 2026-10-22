@@ -561,6 +561,87 @@ def patch_ce_announce(root: Path) -> None:
     print(f"  patched {path.relative_to(root)} (suppressed CE update announcement)")
 
 
+def patch_oe_launch_toggle(root: Path) -> None:
+    """Add the official-style 正版/离线 switch above the login panel."""
+    xaml_path = find_source(root, "PageLaunchLeft.xaml", "PanLogin")
+    xaml, _ = read_source(xaml_path)
+    marker = "<!-- PCL2-CE-patch: OE login type toggle -->"
+    if marker not in xaml:
+        anchor = '        <Grid Grid.ColumnSpan="5" Grid.Row="1" Margin="20,0" VerticalAlignment="Center" x:Name="PanLogin" />'
+        block = "\n".join(
+            [
+                "        " + marker,
+                '        <StackPanel Grid.Row="0" Grid.ColumnSpan="5" Orientation="Horizontal"',
+                '                    HorizontalAlignment="Center" Margin="20,24,20,0">',
+                '            <local:MyRadioBox x:Name="RadioLoginMs"',
+                '                              Text="{DynamicResource Launch.Account.Type.Microsoft}"',
+                '                              Margin="4,0" Check="RadioLoginMs_Check" />',
+                '            <local:MyRadioBox x:Name="RadioLoginOffline"',
+                '                              Text="{DynamicResource Launch.Account.Type.Offline}"',
+                '                              Margin="4,0" Check="RadioLoginOffline_Check" />',
+                "        </StackPanel>",
+                "",
+            ]
+        )
+        if anchor not in xaml:
+            raise PatchError("Could not find the OE launch login anchor")
+        xaml = xaml.replace(anchor, block + anchor, 1)
+        write_source(xaml_path, xaml, xaml_path.read_bytes().startswith(b"\xef\xbb\xbf"))
+        print(f"  patched {xaml_path.relative_to(root)} (login type toggle)")
+
+    code_path = find_source(root, "PageLaunchLeft.xaml.cs", "PageChange")
+    code, _ = read_source(code_path)
+    code_marker = "// PCL2-CE-patch: OE login type toggle"
+    if code_marker not in code:
+        newline = "\r\n" if "\r\n" in code else "\n"
+        methods = newline.join(
+            [
+                "    " + code_marker,
+                "    private bool _syncLoginToggle;",
+                "",
+                "    private void RadioLoginMs_Check(object sender, ModBase.RouteEventArgs e)",
+                "    {",
+                "        if (_syncLoginToggle || !IsLoaded) return;",
+                "        RefreshPage(true, ModLaunch.McLoginType.Ms);",
+                "    }",
+                "",
+                "    private void RadioLoginOffline_Check(object sender, ModBase.RouteEventArgs e)",
+                "    {",
+                "        if (_syncLoginToggle || !IsLoaded) return;",
+                "        RefreshPage(true, ModLaunch.McLoginType.Legacy);",
+                "    }",
+                "",
+                "    private void SyncLoginToggle()",
+                "    {",
+                "        _syncLoginToggle = true;",
+                "        try",
+                "        {",
+                "            if (pageCurrent == PageType.Ms)",
+                "                RadioLoginMs.Checked = true;",
+                "            else if (pageCurrent == PageType.Offline)",
+                "                RadioLoginOffline.Checked = true;",
+                "            else if (ProfileService.Current?.ProfileType == ProfileType.Microsoft)",
+                "                RadioLoginMs.Checked = true;",
+                "            else if (ProfileService.Current?.ProfileType == ProfileType.Offline)",
+                "                RadioLoginOffline.Checked = true;",
+                "        }",
+                "        finally",
+                "        {",
+                "            _syncLoginToggle = false;",
+                "        }",
+                "    }",
+                "",
+            ]
+        )
+        anchor = "    #region 切换登录页面"
+        if anchor not in code:
+            raise PatchError("Could not find the login page region")
+        code = code.replace(anchor, methods + anchor, 1)
+        code = code.replace("            pageCurrent = type;", "            pageCurrent = type;\n            SyncLoginToggle();", 1)
+        write_source(code_path, code, code_path.read_bytes().startswith(b"\xef\xbb\xbf"))
+        print(f"  patched {code_path.relative_to(root)} (login type handlers)")
+
+
 def patch_oe_shell(root: Path) -> None:
     """First visible layer of the OE UI: title, CE badge, fourth tab."""
     main_path = find_source(root, "FormMain.xaml", "CELogo")
@@ -723,6 +804,7 @@ def main() -> int:
         patch_ce_announce(root)
         patch_remove_prompts(root)
         if args.edition == "oe":
+            patch_oe_launch_toggle(root)
             patch_oe_shell(root)
         asset_prefix = "PCL2_OE" if args.edition == "oe" else "PCL2_CE"
         release_suffix = "-oe-patched" if args.edition == "oe" else "-patched"
