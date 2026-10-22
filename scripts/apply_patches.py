@@ -1556,6 +1556,8 @@ def patch_oe_auth_page(root: Path) -> None:
             "            return true;",
             "        }",
             "        ProfileService.IsCreatingProfile = false;",
+            "        if (ModLaunch.mcLoginAuthLoader.Error is not null)",
+            "            HintService.Hint(ModLaunch.mcLoginAuthLoader.Error.Message, HintType.Error);",
             "        return false;",
             "    }",
             "",
