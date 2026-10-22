@@ -912,6 +912,42 @@ def patch_oe_more_links(root: Path) -> None:
         print(f"  patched {code_path.relative_to(root)} (Help / Vote handlers)")
 
 
+def patch_oe_more_default(root: Path) -> None:
+    """Open the About page by default instead of the CE lobby."""
+    path = find_source(root, "PageToolsLeft.xaml.cs", "PageLinkLeft_Loaded")
+    code, newline = read_source(path)
+    marker = "// PCL2-CE-patch: OE more default"
+    if marker in code:
+        return
+    old = newline.join(
+        [
+            "        if (!hideCfg.ToolsGameLink)",
+            "            ItemGameLink.SetChecked(true, false, false);",
+            "        else if (!hideCfg.ToolsTest)",
+            "            ItemTest.SetChecked(true, false, false);",
+            "        else",
+            "            ItemGameLink.SetChecked(true, false, false);",
+        ]
+    )
+    replacement = newline.join(
+        [
+            "        " + marker,
+            "        if (!hideCfg.SetupAbout)",
+            "            ItemAbout.SetChecked(true, false, false);",
+            "        else if (!hideCfg.ToolsTest)",
+            "            ItemTest.SetChecked(true, false, false);",
+            "        else",
+            "            ItemGameLink.SetChecked(true, false, false);",
+        ]
+    )
+    if old not in code:
+        print("  note: More default block not found; skipped")
+        return
+    code = code.replace(old, replacement, 1)
+    write_source(path, code, path.read_bytes().startswith(b"\xef\xbb\xbf"))
+    print(f"  patched {path.relative_to(root)} (More default About)")
+
+
 def patch_oe_about_actions(root: Path) -> None:
     """Match the official About card's 检查更新 action."""
     path = find_source(root, "PageSetupAbout.xaml", "Setup.About.SourceCode")
@@ -1356,6 +1392,7 @@ def main() -> int:
             patch_oe_more_pages(root)
             patch_oe_more_links(root)
             patch_oe_more_flat(root)
+            patch_oe_more_default(root)
             patch_oe_about_actions(root)
             patch_oe_hide_font_card(root)
             patch_oe_more_order(root)
