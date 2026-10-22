@@ -32,6 +32,9 @@ REPOSITORY = os.environ.get("GITHUB_REPOSITORY", "")
 TOKEN = os.environ.get("GH_TOKEN", "")
 INPUT_TAG = os.environ.get("INPUT_TAG", "").strip()
 FORCE_REBUILD = os.environ.get("FORCE_REBUILD", "").strip().lower() in {"1", "true", "yes"}
+EDITION = os.environ.get("EDITION", "ce").strip().lower()
+ASSET_PREFIX = "PCL2_OE" if EDITION == "oe" else "PCL2_CE"
+RELEASE_SUFFIX = "-oe-patched" if EDITION == "oe" else "-patched"
 
 
 def api(path: str, *, allow_not_found: bool = False):
@@ -62,7 +65,7 @@ def release_configuration(release: dict) -> str:
 
 
 def patched_tag(version: str) -> str:
-    return f"v{version}-patched"
+    return f"v{version}{RELEASE_SUFFIX}"
 
 
 def has_complete_patched_release(version: str, configuration: str) -> bool:
@@ -71,8 +74,8 @@ def has_complete_patched_release(version: str, configuration: str) -> bool:
         return False
     names = {asset.get("name", "") for asset in release.get("assets", [])}
     return {
-        f"PCL2_CE_{configuration}_x64_patched.exe",
-        f"PCL2_CE_{configuration}_ARM64_patched.exe",
+        f"{ASSET_PREFIX}_{configuration}_x64_patched.exe",
+        f"{ASSET_PREFIX}_{configuration}_ARM64_patched.exe",
     }.issubset(names)
 
 

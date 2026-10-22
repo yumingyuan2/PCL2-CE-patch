@@ -228,7 +228,7 @@ public class UpdatesPclCePatchModel : IUpdateSource
 {
     private const string ReleasesApi =
         "https://api.github.com/repos/__REPOSITORY__/releases?per_page=100";
-    private const string PatchedSuffix = "-patched";
+    private const string PatchedSuffix = "__RELEASE_SUFFIX__";
 
     private JsonArray? _releases;
 
@@ -352,7 +352,7 @@ public class UpdatesPclCePatchModel : IUpdateSource
     {
         var configuration = channel == UpdateChannel.beta ? "Beta" : "Release";
         var architecture = arch == UpdateArch.arm64 ? "ARM64" : "x64";
-        var expected = $"PCL2_CE_{configuration}_{architecture}_patched.exe";
+        var expected = $"__ASSET_PREFIX___{configuration}_{architecture}_patched.exe";
 
         if (release["assets"] is not JsonArray assets)
             return null;
@@ -627,7 +627,12 @@ def patch_oe_shell(root: Path) -> None:
             print(f"  patched {path.relative_to(root)} (Tools -> More)")
 
 
-def patch_updater(root: Path, repository: str) -> None:
+def patch_updater(
+    root: Path,
+    repository: str,
+    asset_prefix: str,
+    release_suffix: str,
+) -> None:
     updater_path = find_source(root, "UpdateManager.cs", "remoteServer")
     text, newline = read_source(updater_path)
 
@@ -673,7 +678,11 @@ def patch_updater(root: Path, repository: str) -> None:
     text = text[:start] + replacement + text[semicolon + 1 :]
     write_source(updater_path, text, updater_path.read_bytes().startswith(b"\xef\xbb\xbf"))
 
-    class_text = UPDATER_SOURCE.replace("__REPOSITORY__", repository)
+    class_text = (
+        UPDATER_SOURCE.replace("__REPOSITORY__", repository)
+        .replace("__ASSET_PREFIX__", asset_prefix)
+        .replace("__RELEASE_SUFFIX__", release_suffix)
+    )
     class_path = updater_path.with_name("UpdatesPclCePatchModel.cs")
     class_path.write_text(class_text, encoding="utf-8", newline="\n")
 
@@ -715,7 +724,9 @@ def main() -> int:
         patch_remove_prompts(root)
         if args.edition == "oe":
             patch_oe_shell(root)
-        patch_updater(root, args.repo)
+        asset_prefix = "PCL2_OE" if args.edition == "oe" else "PCL2_CE"
+        release_suffix = "-oe-patched" if args.edition == "oe" else "-patched"
+        patch_updater(root, args.repo, asset_prefix, release_suffix)
     except PatchError as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
