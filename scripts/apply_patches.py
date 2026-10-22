@@ -707,6 +707,50 @@ def patch_oe_shell(root: Path) -> None:
             write_source(path, text, path.read_bytes().startswith(b"\xef\xbb\xbf"))
             print(f"  patched {path.relative_to(root)} (Tools -> More)")
 
+    settings_labels = {
+        "zh-CN.xaml": {
+            "Game": "启动",
+            "Launcher": "个性化",
+            "About": "其他",
+            "Tools": "联机",
+        },
+        "zh-TW.xaml": {
+            "Game": "啟動",
+            "Launcher": "個人化",
+            "About": "其他",
+            "Tools": "連線",
+        },
+        "en-US.xaml": {
+            "Game": "Launch",
+            "Launcher": "Personalization",
+            "About": "Other",
+            "Tools": "Multiplayer",
+        },
+        "en-GB.xaml": {
+            "Game": "Launch",
+            "Launcher": "Personalisation",
+            "About": "Other",
+            "Tools": "Multiplayer",
+        },
+    }
+    for filename, mapping in settings_labels.items():
+        try:
+            path = find_source(root, filename, "Setup.Left.Category.Game")
+        except PatchError:
+            continue
+        text, _ = read_source(path)
+        changed = False
+        for key, value in mapping.items():
+            pattern = (
+                rf'(<sys:String x:Key="Setup\.Left\.Category\.{key}">)'
+                rf"[^<]*(</sys:String>)"
+            )
+            text, count = re.subn(pattern, rf"\g<1>{value}\2", text, count=1)
+            changed = changed or count == 1
+        if changed:
+            write_source(path, text, path.read_bytes().startswith(b"\xef\xbb\xbf"))
+            print(f"  patched {path.relative_to(root)} (OE settings categories)")
+
 
 def patch_updater(
     root: Path,
