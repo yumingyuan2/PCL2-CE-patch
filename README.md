@@ -78,9 +78,9 @@ PCL2 CE Edit 是带上述补丁的 PCL2 CE。下载、启动和实例功能仍�
 
 ## 历史版本回填
 
-Actions 里的 CE / OE 工作流都有 `backfill` 开关。打开后会检查上游最近 50 个
-Release，只重建仍然使用当前 C# / `ProfileUi` 架构的 tag；旧架构 tag 跳过，已有
-Release 保持不动。
+手动运行 CE / OE 工作流时，把 `tag` 填成 `ALL`。它会检查上游最近 50 个 Release，
+只重建仍然使用当前 C# / `ProfileUi` 架构的 tag；旧架构 tag 跳过，已有 Release
+保持不动。
 
 回填完成后，这些历史版本不会因为仓库里的 patch 代码更新而自动重打；patch 更新只
 影响之后的新版本和手动强制重建。
