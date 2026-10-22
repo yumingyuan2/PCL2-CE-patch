@@ -135,7 +135,7 @@ jobs:
           # Include the configuration so "2.15.1" never prefix-matches
           # "2.15.1-beta.1" when the publish job downloads by pattern.
           name: oe-patched-${{ matrix.configuration }}-${{ matrix.version }}-${{ matrix.arch }}
-          path: artifact/PCL2_CE_*_patched.exe*
+          path: artifact/PCL2_OE_*_patched.exe*
           if-no-files-found: error
 
   publish:
