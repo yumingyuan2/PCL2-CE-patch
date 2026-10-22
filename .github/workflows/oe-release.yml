@@ -126,7 +126,7 @@ jobs:
         with:
           inputs: artifact/PCL2_OE_${{ matrix.configuration }}_${{ matrix.arch }}_patched.exe
           verify: true
-          verify-cert-identity: https://github.com/${{ github.repository }}/.github/workflows/patch-release.yml@${{ github.ref }}
+          verify-cert-identity: https://github.com/${{ github.repository }}/.github/workflows/oe-release.yml@${{ github.ref }}
           verify-oidc-issuer: https://token.actions.githubusercontent.com
 
       - name: Upload patched artifacts
