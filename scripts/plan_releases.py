@@ -97,7 +97,7 @@ def is_supported(tag: str) -> bool:
 
 
 def choose_candidates() -> list[dict]:
-    if INPUT_TAG:
+    if INPUT_TAG and INPUT_TAG.upper() != "ALL":
         tag = INPUT_TAG if INPUT_TAG.startswith("v") else f"v{INPUT_TAG}"
         release = api(f"/repos/{UPSTREAM}/releases/tags/{tag}", allow_not_found=True)
         if not release:
@@ -113,7 +113,7 @@ def choose_candidates() -> list[dict]:
     if not published:
         return []
 
-    if BACKFILL:
+    if BACKFILL or INPUT_TAG.upper() == "ALL":
         return published[:MAX_VERSIONS]
 
     stable = next((release for release in published if not release.get("prerelease")), None)
@@ -147,7 +147,7 @@ def main() -> int:
             continue
         version = release_version(tag)
         configuration = release_configuration(release)
-        if BACKFILL and not is_supported(tag):
+        if (BACKFILL or INPUT_TAG.upper() == "ALL") and not is_supported(tag):
             print(f"skip {tag}: source architecture differs from the current PCL.Core/ProfileUi layout")
             continue
         if not FORCE_REBUILD and has_complete_patched_release(version, configuration):
