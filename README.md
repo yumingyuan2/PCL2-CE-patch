@@ -73,10 +73,23 @@ GitHub Actions 不能直接监听另一个仓库的 `release` 事件，因此：
 
 ## PCL2 CE Edit
 
-当前只维护 PCL2 CE Edit，也就是带上述补丁的 PCL2 CE。下载、启动和实例功能仍由
-PCL2 CE 提供，不照官方当前的“停止 MC 下载”状态。
+PCL2 CE Edit 是带上述补丁的 PCL2 CE。下载、启动和实例功能仍由 PCL2 CE 提供，不照
+官方当前的“停止 MC 下载”状态。
 
-之前的 PCL2 OE 预览 Release 保留，但不再继续更新；后续只维护 CE Edit。
+## PCL2 OE
+
+OE 版与 CE 共用业务代码和补丁，额外应用官方风格的 UI 外壳。产物为：
+
+- `PCL2_OE_Release_x64_patched.exe`
+- `PCL2_OE_Release_ARM64_patched.exe`
+- 对应的 `.sigstore.json`
+
+上游 beta 版本对应 `PCL2_OE_Beta_*_patched.exe`，release tag 为
+`v<version>-oe-patched`。
+
+当前 OE 仍是预览版：顶栏、标题、CE 徽标、“更多”入口、启动页的“正版 / 离线”切换
+已按官方样式重做；设置页、更多页和关于页等继续调整。下载功能保留 CE 的完整能力，
+不照官方当前的“停止 MC 下载”状态。
 
 ## 使用前设置
 
@@ -86,7 +99,7 @@ PCL2 CE 提供，不照官方当前的“停止 MC 下载”状态。
    `CLIENT_ID`、`CURSEFORGE_API_KEY`、`SENTRY_DSN`、`NAID_CLIENT_ID`、
    `NAID_CLIENT_SECRET`、`LINK_SERVER_ROOTS`、`LOBBY_DEFAULT_SECRET`。
    不配置也能构建，只是对应功能保持禁用。
-3. 在 Actions 页面手动运行一次 `Build patched PCL2 CE`，或等待定时任务。
+3. 在 Actions 页面手动运行一次 `Build patched PCL2 CE` 或 `Build patched PCL2 OE`，或等待定时任务。
 
 ## 更新逻辑说明
 

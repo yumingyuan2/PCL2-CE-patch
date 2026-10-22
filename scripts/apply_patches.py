@@ -562,23 +562,59 @@ def patch_ce_announce(root: Path) -> None:
 
 
 def patch_oe_launch_toggle(root: Path) -> None:
-    """Add the official-style 正版/离线 switch above the login panel."""
+    """Recreate the official 正版/离线 pill switch above the login panel."""
     xaml_path = find_source(root, "PageLaunchLeft.xaml", "PanLogin")
     xaml, _ = read_source(xaml_path)
     marker = "<!-- PCL2-CE-patch: OE login type toggle -->"
+
+    if 'xmlns:svgIcon="clr-namespace:PCL.Core.UI.Controls.SvgIcon;assembly=PCL.Core"' not in xaml:
+        xaml = xaml.replace(
+            'xmlns:local="clr-namespace:PCL"',
+            'xmlns:local="clr-namespace:PCL"\n'
+            '                  xmlns:svgIcon="clr-namespace:PCL.Core.UI.Controls.SvgIcon;assembly=PCL.Core"',
+            1,
+        )
+
+    # Remove the earlier radio-box version if it exists, so preview builds
+    # upgrade to the pill style as well.
+    old = re.search(
+        r"        <!-- PCL2-CE-patch: OE login type toggle -->.*?        </StackPanel>\r?\n",
+        xaml,
+        re.DOTALL,
+    )
+    if old is not None:
+        xaml = xaml[: old.start()] + xaml[old.end() :]
+
     if marker not in xaml:
         anchor = '        <Grid Grid.ColumnSpan="5" Grid.Row="1" Margin="20,0" VerticalAlignment="Center" x:Name="PanLogin" />'
         block = "\n".join(
             [
                 "        " + marker,
-                '        <StackPanel Grid.Row="0" Grid.ColumnSpan="5" Orientation="Horizontal"',
-                '                    HorizontalAlignment="Center" Margin="20,24,20,0">',
-                '            <local:MyRadioBox x:Name="RadioLoginMs"',
-                '                              Text="{DynamicResource Launch.Account.Type.Microsoft}"',
-                '                              Margin="4,0" Check="RadioLoginMs_Check" />',
-                '            <local:MyRadioBox x:Name="RadioLoginOffline"',
-                '                              Text="{DynamicResource Launch.Account.Type.Offline}"',
-                '                              Margin="4,0" Check="RadioLoginOffline_Check" />',
+                '        <StackPanel x:Name="PanLoginToggle" Grid.Row="0" Grid.ColumnSpan="5"',
+                '                    Orientation="Horizontal" HorizontalAlignment="Center" Margin="20,24,20,0">',
+                '            <Border x:Name="BtnLoginMs" Height="28" CornerRadius="14" Padding="14,0"',
+                '                    Margin="4,0" Background="#127AE1" Cursor="Hand"',
+                '                    MouseLeftButtonUp="BtnLoginMs_Click">',
+                "                <StackPanel Orientation=\"Horizontal\">",
+                '                    <svgIcon:SvgIcon x:Name="IconLoginMs" Width="16" Height="16" Stretch="Uniform"',
+                '                                     Icon="lucide/shield-check" IconBrush="White"',
+                '                                     VerticalAlignment="Center" />',
+                '                    <TextBlock x:Name="LabLoginMs" Text="正版" Foreground="White"',
+                '                               Margin="6,0,0,0" FontSize="14" VerticalAlignment="Center" />',
+                "                </StackPanel>",
+                "            </Border>",
+                '            <Border x:Name="BtnLoginOffline" Height="28" CornerRadius="14" Padding="14,0"',
+                '                    Margin="4,0" Background="#EEF6FD" Cursor="Hand"',
+                '                    MouseLeftButtonUp="BtnLoginOffline_Click">',
+                "                <StackPanel Orientation=\"Horizontal\">",
+                '                    <svgIcon:SvgIcon x:Name="IconLoginOffline" Width="16" Height="16" Stretch="Uniform"',
+                '                                     Icon="lucide/link-2" IconBrush="#127AE1"',
+                '                                     VerticalAlignment="Center" />',
+                '                    <TextBlock x:Name="LabLoginOffline" Text="离线"',
+                '                               Foreground="#127AE1"',
+                '                               Margin="6,0,0,0" FontSize="14" VerticalAlignment="Center" />',
+                "                </StackPanel>",
+                "            </Border>",
                 "        </StackPanel>",
                 "",
             ]
@@ -587,11 +623,19 @@ def patch_oe_launch_toggle(root: Path) -> None:
             raise PatchError("Could not find the OE launch login anchor")
         xaml = xaml.replace(anchor, block + anchor, 1)
         write_source(xaml_path, xaml, xaml_path.read_bytes().startswith(b"\xef\xbb\xbf"))
-        print(f"  patched {xaml_path.relative_to(root)} (login type toggle)")
+        print(f"  patched {xaml_path.relative_to(root)} (login type pills)")
 
     code_path = find_source(root, "PageLaunchLeft.xaml.cs", "PageChange")
     code, _ = read_source(code_path)
     code_marker = "// PCL2-CE-patch: OE login type toggle"
+
+    if "using SvgIconControl =" not in code:
+        code = code.replace(
+            "using PCL.Network;",
+            "using PCL.Network;\nusing SvgIconControl = PCL.Core.UI.Controls.SvgIcon.SvgIcon;",
+            1,
+        )
+
     if code_marker not in code:
         newline = "\r\n" if "\r\n" in code else "\n"
         methods = newline.join(
@@ -599,13 +643,13 @@ def patch_oe_launch_toggle(root: Path) -> None:
                 "    " + code_marker,
                 "    private bool _syncLoginToggle;",
                 "",
-                "    private void RadioLoginMs_Check(object sender, ModBase.RouteEventArgs e)",
+                "    private void BtnLoginMs_Click(object sender, MouseButtonEventArgs e)",
                 "    {",
                 "        if (_syncLoginToggle || !IsLoaded) return;",
                 "        RefreshPage(true, ModLaunch.McLoginType.Ms);",
                 "    }",
                 "",
-                "    private void RadioLoginOffline_Check(object sender, ModBase.RouteEventArgs e)",
+                "    private void BtnLoginOffline_Click(object sender, MouseButtonEventArgs e)",
                 "    {",
                 "        if (_syncLoginToggle || !IsLoaded) return;",
                 "        RefreshPage(true, ModLaunch.McLoginType.Legacy);",
@@ -613,22 +657,36 @@ def patch_oe_launch_toggle(root: Path) -> None:
                 "",
                 "    private void SyncLoginToggle()",
                 "    {",
+                "        var ms = pageCurrent == PageType.Ms ||",
+                "                 ProfileService.Current?.ProfileType == ProfileType.Microsoft;",
+                "        var offline = pageCurrent == PageType.Offline ||",
+                "                      ProfileService.Current?.ProfileType == ProfileType.Offline;",
+                "        if (!ms && !offline) ms = true;",
+                "        SetLoginToggle(ms, offline);",
+                "    }",
+                "",
+                "    private void SetLoginToggle(bool msSelected, bool offlineSelected)",
+                "    {",
                 "        _syncLoginToggle = true;",
                 "        try",
                 "        {",
-                "            if (pageCurrent == PageType.Ms)",
-                "                RadioLoginMs.Checked = true;",
-                "            else if (pageCurrent == PageType.Offline)",
-                "                RadioLoginOffline.Checked = true;",
-                "            else if (ProfileService.Current?.ProfileType == ProfileType.Microsoft)",
-                "                RadioLoginMs.Checked = true;",
-                "            else if (ProfileService.Current?.ProfileType == ProfileType.Offline)",
-                "                RadioLoginOffline.Checked = true;",
+                "            ApplyLoginPill(BtnLoginMs, IconLoginMs, LabLoginMs, msSelected);",
+                "            ApplyLoginPill(BtnLoginOffline, IconLoginOffline, LabLoginOffline, offlineSelected);",
                 "        }",
                 "        finally",
                 "        {",
                 "            _syncLoginToggle = false;",
                 "        }",
+                "    }",
+                "",
+                "    private static void ApplyLoginPill(Border border, SvgIconControl icon, TextBlock text, bool selected)",
+                "    {",
+                "        var accent = new SolidColorBrush(Color.FromRgb(0x12, 0x7A, 0xE1));",
+                "        var soft = new SolidColorBrush(Color.FromRgb(0xEE, 0xF6, 0xFD));",
+                "        border.Background = selected ? accent : soft;",
+                "        var foreground = selected ? Brushes.White : accent;",
+                "        text.Foreground = foreground;",
+                "        icon.IconBrush = foreground;",
                 "    }",
                 "",
             ]
@@ -637,7 +695,11 @@ def patch_oe_launch_toggle(root: Path) -> None:
         if anchor not in code:
             raise PatchError("Could not find the login page region")
         code = code.replace(anchor, methods + anchor, 1)
-        code = code.replace("            pageCurrent = type;", "            pageCurrent = type;\n            SyncLoginToggle();", 1)
+        code = code.replace(
+            "            pageCurrent = type;",
+            "            pageCurrent = type;\n            SyncLoginToggle();",
+            1,
+        )
         write_source(code_path, code, code_path.read_bytes().startswith(b"\xef\xbb\xbf"))
         print(f"  patched {code_path.relative_to(root)} (login type handlers)")
 

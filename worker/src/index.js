@@ -39,7 +39,10 @@ export default {
 async function run(env) {
   const upstream = required(env, "UPSTREAM_REPOSITORY");
   const repository = required(env, "GITHUB_REPOSITORY");
-  const eventType = env.DISPATCH_EVENT_TYPE || "upstream-release";
+  const eventTypes = [
+    env.DISPATCH_EVENT_TYPE || "upstream-release",
+    env.DISPATCH_EVENT_TYPE_OE || "upstream-release-oe"
+  ];
 
   if (!env.GITHUB_TOKEN) {
     throw new Error("GITHUB_TOKEN secret is not set");
@@ -81,18 +84,20 @@ async function run(env) {
     return;
   }
 
-  console.log("Dispatching patched build:", { previous, current });
-  await githubJson(
-    `/repos/${repository}/dispatches`,
-    {
-      method: "POST",
-      body: JSON.stringify({
-        event_type: eventType,
-        client_payload: current
-      })
-    },
-    env.GITHUB_TOKEN
-  );
+  console.log("Dispatching patched builds:", { previous, current, eventTypes });
+  for (const eventType of eventTypes) {
+    await githubJson(
+      `/repos/${repository}/dispatches`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          event_type: eventType,
+          client_payload: current
+        })
+      },
+      env.GITHUB_TOKEN
+    );
+  }
 
   // Only remember the tags after GitHub accepted the dispatch.  If the API
   // call fails, the next cron run retries instead of losing the release.
