@@ -1421,8 +1421,11 @@ def patch_oe_auth_page(root: Path) -> None:
         "    {\n"
         "        // PCL2-CE-patch: OE auth page\n"
         '        _authServerUrl = draggedAuthServer ?? "";\n'
+        '        var authInstance = PageInstanceLeft.McInstance ?? ModInstanceList.McMcInstanceSelected;\n'
+        '        if (string.IsNullOrWhiteSpace(_authServerUrl) && authInstance is not null)\n'
+        '            _authServerUrl = Config.InstanceAuth.AuthServerAddress[authInstance.PathInstance];\n'
         '        ActiveServerName = _authServerUrl.Contains("littleskin", StringComparison.OrdinalIgnoreCase) ? "LittleSkin" : "第三方登录";\n'
-        '        if (ModMain.frmLaunchLeft is not null) ModMain.frmLaunchLeft.LabLoginAuthType.Text = ActiveServerName + " 登录";\n'
+        '        if (ModMain.frmLaunchLeft is not null) ModMain.frmLaunchLeft.LabLoginAuthType.Text = ActiveServerName.EndsWith("登录") ? ActiveServerName : ActiveServerName + " 登录";\n'
         "        draggedAuthServer = null;\n"
         "        draggedAuthServerOAuthSupported = null;\n"
         "        _oauthSupported = false;\n"
@@ -1466,7 +1469,9 @@ def patch_oe_auth_page(root: Path) -> None:
     code = code.replace(
         "        var address = Config.InstanceAuth.AuthRegisterAddress.ToString();",
         "        _isRegisterMode = false;" + newline
-        + "        var address = Config.InstanceAuth.AuthRegisterAddress.ToString();",
+        + "        var address = PageInstanceLeft.McInstance is null"
+        + newline + "            ? \"\""
+        + newline + "            : Config.InstanceAuth.AuthRegisterAddress[PageInstanceLeft.McInstance.PathInstance];",
         1,
     )
     code = code.replace(
@@ -1489,7 +1494,9 @@ def patch_oe_auth_page(root: Path) -> None:
         [
             "    private void Btn_Click(object sender, EventArgs e)",
             "    {",
-            "        var address = Config.InstanceAuth.AuthRegisterAddress.ToString();",
+            "        var address = PageInstanceLeft.McInstance is null"
+            + newline + "            ? \"\""
+            + newline + "            : Config.InstanceAuth.AuthRegisterAddress[PageInstanceLeft.McInstance.PathInstance];",
             "        if (_isRegisterMode)",
             '            address = address.Replace("/auth/forgot", "/auth/register");',
             "        else",
