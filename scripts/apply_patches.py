@@ -451,6 +451,66 @@ def patch_profile_creation_unlock(root: Path) -> None:
         print("  note: Microsoft-first hint was not found; skipped")
 
 
+def patch_remove_prompts(root: Path) -> None:
+    try:
+        path = find_source(root, "ModLaunch.cs", "McLaunchStart")
+    except PatchError:
+        print("  note: ModLaunch.McLaunchStart not found; prompts unchanged")
+        return
+
+    text, _ = read_source(path)
+    marker = "// PCL2-CE-patch: purchase/donation prompts removed"
+    if marker in text:
+        return
+
+    # Donation prompt (BETA builds, every N launches).
+    donation = re.compile(r"#if BETA.*?Donate.*?#endif", re.DOTALL)
+    text, donation_count = donation.subn(marker, text, count=1)
+    if donation_count != 1:
+        print("  note: donation prompt block not found; skipped")
+
+    # Genuine-purchase / account-verification dialog.
+    start = text.find("// 正版购买提示")
+    purchase_removed = False
+    if start >= 0:
+        condition = text.find("if (!ProfileService.HasMicrosoftProfile)", start)
+        if condition >= 0:
+            brace = text.find("{", condition)
+            depth = 0
+            close = -1
+            for index in range(brace, len(text)):
+                char = text[index]
+                if char == "{":
+                    depth += 1
+                elif char == "}":
+                    depth -= 1
+                    if depth == 0:
+                        close = index
+                        break
+            if close >= 0:
+                text = text[:start] + marker + text[close + 1 :]
+                purchase_removed = True
+    if not purchase_removed:
+        print("  note: purchase prompt block not found; skipped")
+
+    leftovers = [
+        key
+        for key in (
+            "Minecraft.Launch.PurchaseHint",
+            "Minecraft.Launch.AccountVerification",
+            "Minecraft.Launch.Donate",
+        )
+        if key in text
+    ]
+    if leftovers:
+        raise PatchError(
+            "Prompt removal incomplete; still found: " + ", ".join(leftovers)
+        )
+
+    write_source(path, text, path.read_bytes().startswith(b"\xef\xbb\xbf"))
+    print(f"  patched {path.relative_to(root)} (purchase/donation prompts removed)")
+
+
 def patch_ce_announce(root: Path) -> None:
     try:
         path = find_source(root, "UpdateManager.cs", "ShowCEAnnounce")
@@ -499,6 +559,72 @@ def patch_ce_announce(root: Path) -> None:
     text = text[:start] + replacement + text[close + 1 :]
     write_source(path, text, path.read_bytes().startswith(b"\xef\xbb\xbf"))
     print(f"  patched {path.relative_to(root)} (suppressed CE update announcement)")
+
+
+def patch_oe_shell(root: Path) -> None:
+    """First visible layer of the OE UI: title, CE badge, fourth tab."""
+    main_path = find_source(root, "FormMain.xaml", "CELogo")
+    text, newline = read_source(main_path)
+    marker = "<!-- PCL2-CE-patch: OE shell -->"
+
+    if marker not in text:
+        text = marker + newline + text
+        try:
+            text, _ = sub_once(
+                text,
+                r'Title="Plain Craft Launcher Community Edition\s*"',
+                'Title="PCL2 OE"',
+                "FormMain title",
+            )
+        except PatchError:
+            pass
+
+        # Hide the CE badge in XAML; ModSetup will also be patched below.
+        text = re.sub(
+            r'(<Border x:Name="CELogo")(?![^>]*\bVisibility=)',
+            r'\1 Visibility="Collapsed"',
+            text,
+            count=1,
+        )
+
+        # Official fourth tab is "More" with a grid icon.
+        text = text.replace('SvgIcon="lucide/wrench"', 'SvgIcon="lucide/grid-2x2"', 1)
+        write_source(main_path, text, main_path.read_bytes().startswith(b"\xef\xbb\xbf"))
+        print(f"  patched {main_path.relative_to(root)} (OE title / CE badge / More tab)")
+
+    # Hide the badge wherever the logo style is applied at runtime.
+    try:
+        setup_path = find_source(root, "ModSetup.cs", "CELogo")
+        setup_text, _ = read_source(setup_path)
+        setup_marker = "// PCL2-CE-patch: OE hides the CE badge"
+        if setup_marker not in setup_text:
+            setup_text = setup_text.replace(
+                "ModMain.frmMain.CELogo.Visibility = Visibility.Visible;",
+                "ModMain.frmMain.CELogo.Visibility = Visibility.Collapsed; " + setup_marker,
+            )
+            write_source(setup_path, setup_text, setup_path.read_bytes().startswith(b"\xef\xbb\xbf"))
+            print(f"  patched {setup_path.relative_to(root)} (CE badge hidden)")
+    except PatchError:
+        pass
+
+    # Localized label for the fourth top-level tab.
+    labels = {
+        "zh-CN.xaml": "更多",
+        "zh-TW.xaml": "更多",
+        "en-US.xaml": "More",
+        "en-GB.xaml": "More",
+    }
+    for filename, value in labels.items():
+        try:
+            path = find_source(root, filename, "Main.Tab.Tools")
+        except PatchError:
+            continue
+        text, _ = read_source(path)
+        pattern = r'(<sys:String x:Key="Main\.Tab\.Tools">)[^<]*(</sys:String>)'
+        text, count = re.subn(pattern, rf"\g<1>{value}\2", text, count=1)
+        if count == 1:
+            write_source(path, text, path.read_bytes().startswith(b"\xef\xbb\xbf"))
+            print(f"  patched {path.relative_to(root)} (Tools -> More)")
 
 
 def patch_updater(root: Path, repository: str) -> None:
@@ -563,6 +689,12 @@ def main() -> int:
         required=True,
         help="GitHub repository that publishes the patched releases, e.g. owner/PCL2-CE-patch",
     )
+    parser.add_argument(
+        "--edition",
+        choices=("ce", "oe"),
+        default="ce",
+        help="ce: keep CE branding; oe: apply the first OE shell layer",
+    )
     args = parser.parse_args()
 
     root = args.source.resolve()
@@ -580,6 +712,9 @@ def main() -> int:
         patch_region_policy(root)
         patch_profile_creation_unlock(root)
         patch_ce_announce(root)
+        patch_remove_prompts(root)
+        if args.edition == "oe":
+            patch_oe_shell(root)
         patch_updater(root, args.repo)
     except PatchError as error:
         print(f"error: {error}", file=sys.stderr)
