@@ -48,7 +48,8 @@ GitHub Actions 不能直接监听另一个仓库的 `release` 事件，因此：
 - 同时构建「最新的正式版」和「最新的 beta 版」中尚未构建过的版本；beta 即使比
   stable 旧也会保留，方便 beta 通道用户
 - 支持手动 `workflow_dispatch`（可指定 tag，`force=true` 可强制重建已有 release）
-- 支持 `repository_dispatch`（`upstream-release`），方便用外部 webhook/中转实现即时触发
+- 支持 `repository_dispatch`（`upstream-release` / `upstream-release-oe`），方便用外部
+  webhook/中转实现即时触发
 
 > GitHub 公共仓库的 `schedule` 在 60 天没有仓库活动后会被自动禁用。为了不依赖
 > keepalive commit，可以使用 [`worker/`](worker/README.md) 里的 Cloudflare Worker：
