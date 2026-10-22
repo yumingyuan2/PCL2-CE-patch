@@ -76,6 +76,15 @@ GitHub Actions 不能直接监听另一个仓库的 `release` 事件，因此：
 PCL2 CE Edit 是带上述补丁的 PCL2 CE。下载、启动和实例功能仍由 PCL2 CE 提供，不照
 官方当前的“停止 MC 下载”状态。
 
+## 历史版本回填
+
+Actions 里的 CE / OE 工作流都有 `backfill` 开关。打开后会检查上游最近 50 个
+Release，只重建仍然使用当前 C# / `ProfileUi` 架构的 tag；旧架构 tag 跳过，已有
+Release 保持不动。
+
+回填完成后，这些历史版本不会因为仓库里的 patch 代码更新而自动重打；patch 更新只
+影响之后的新版本和手动强制重建。
+
 ## PCL2 OE
 
 OE 版与 CE 共用业务代码和补丁，额外应用官方风格的 UI 外壳。产物为：
