@@ -951,6 +951,48 @@ def patch_oe_single_profile_flow(root: Path) -> None:
         anchor = "        var type = default(PageType);"
         if anchor in code:
             code = code.replace(anchor, auth_only + newline + anchor, 1)
+        code = code.replace(
+            '        LabLaunchingStage.Text = Lang.Text("Common.Action.Initialize");',
+            '        LabLaunchingStage.Text = pageCurrent == PageType.Auth'
+            + newline + '            ? "登录"'
+            + newline + '            : Lang.Text("Common.Action.Initialize");',
+            1,
+        )
+        code = code.replace(
+            "        // 修改验证方式" + newline + "        switch (ProfileService.Current?.ProfileType)",
+            "        // 修改验证方式" + newline
+            + "        if (pageCurrent == PageType.Auth)" + newline
+            + "        {" + newline
+            + '            LabLaunchingMethod.Text = string.IsNullOrWhiteSpace(PageLoginAuth.ActiveServerName)' + newline
+            + '                ? "第三方登录"' + newline
+            + "                : PageLoginAuth.ActiveServerName;" + newline
+            + "        }" + newline
+            + "        else" + newline
+            + "        switch (ProfileService.Current?.ProfileType)",
+            1,
+        )
+        progress_method = newline.join(
+            [
+                "    public void SetAuthLoginProgress(double progress)",
+                "    {",
+                "        if (pageCurrent != PageType.Auth) return;",
+                "        var shown = Math.Clamp(progress, 0d, 1d) * 0.15d;",
+                '        LabLaunchingStage.Text = "登录";',
+                '        LabLaunchingMethod.Text = string.IsNullOrWhiteSpace(PageLoginAuth.ActiveServerName)',
+                '            ? "第三方登录"',
+                "            : PageLoginAuth.ActiveServerName;",
+                '        LabLaunchingProgress.Text = Lang.Number(shown, "P0");',
+                "        ProgressLaunchingFinished.Width = new GridLength(shown * 100d, GridUnitType.Star);",
+                "        ProgressLaunchingUnfinished.Width = new GridLength(100d - shown * 100d, GridUnitType.Star);",
+                "    }",
+                "",
+            ]
+        )
+        code = code.replace(
+            "    public void PageChangeToLaunching()",
+            progress_method + "    public void PageChangeToLaunching()",
+            1,
+        )
         write_source(path, code, path.read_bytes().startswith(b"\xef\xbb\xbf"))
         print(f"  patched {path.relative_to(root)} (single-profile flow)")
 
@@ -1567,7 +1609,10 @@ def patch_oe_auth_page(root: Path) -> None:
             "        ProfileService.IsCreatingProfile = true;",
             "        ModLaunch.mcLoginAuthLoader.Start(loginData, true);",
             "        while (ModLaunch.mcLoginAuthLoader.State == ModBase.LoadState.Loading)",
+            "        {",
+            "            ModMain.frmLaunchLeft.SetAuthLoginProgress(ModLaunch.mcLoginAuthLoader.Progress);",
             "            await Task.Delay(50);",
+            "        }",
             "        if (ModLaunch.mcLoginAuthLoader.State == ModBase.LoadState.Finished)",
             "        {",
             "            if (refresh) ModMain.frmLaunchLeft.RefreshPage(true);",
