@@ -952,6 +952,45 @@ def patch_oe_more_flat(root: Path) -> None:
         print(f"  patched {ui_path.relative_to(root)} (removed More header code)")
 
 
+def patch_oe_more_order(root: Path) -> None:
+    """Reorder the flat More list to the official Help/About/... sequence."""
+    path = find_source(root, "PageToolsLeft.xaml", "ItemGameLink")
+    text, newline = read_source(path)
+    marker = "<!-- PCL2-CE-patch: OE more order -->"
+    if marker in text:
+        return
+
+    stack = text.find("<StackPanel")
+    open_end = text.find(">", stack) + 1
+    close = text.rindex("</StackPanel>")
+    inner = text[open_end:close]
+
+    patterns = {
+        "ItemGameLink": r"<local:MyListItem x:Name=\"ItemGameLink\".*?</local:MyListItem>",
+        "ItemTest": r"<local:MyListItem x:Name=\"ItemTest\".*?/>",
+        "ItemAbout": r"<local:MyListItem x:Name=\"ItemAbout\".*?/>",
+        "ItemFeedback": r"<local:MyListItem x:Name=\"ItemFeedback\".*?/>",
+        "ItemHelp": r"<local:MyListItem x:Name=\"ItemHelp\".*?/>",
+        "ItemVote": r"<local:MyListItem x:Name=\"ItemVote\".*?/>",
+    }
+    blocks = {}
+    for name, pattern in patterns.items():
+        match = re.search(pattern, inner, re.DOTALL)
+        if match is None:
+            print(f"  note: More item {name} not found; order unchanged")
+            return
+        blocks[name] = match.group(0).strip()
+
+    order = ["ItemHelp", "ItemAbout", "ItemTest", "ItemFeedback", "ItemVote", "ItemGameLink"]
+    lines = ["        " + marker]
+    for name in order:
+        lines.append("        " + blocks[name])
+    new_inner = newline + newline.join(lines) + newline
+    text = text[:open_end] + new_inner + text[close:]
+    write_source(path, text, path.read_bytes().startswith(b"\xef\xbb\xbf"))
+    print(f"  patched {path.relative_to(root)} (More order)")
+
+
 def patch_oe_more_pages(root: Path) -> None:
     """Move About/Feedback into the More (Tools) page for OE."""
     xaml_path = find_source(root, "PageToolsLeft.xaml", "ItemTest")
@@ -1253,6 +1292,7 @@ def main() -> int:
             patch_oe_more_pages(root)
             patch_oe_more_links(root)
             patch_oe_more_flat(root)
+            patch_oe_more_order(root)
             patch_oe_about_footer(root)
         asset_prefix = "PCL2_OE" if args.edition == "oe" else "PCL2_CE"
         release_suffix = "-oe-patched" if args.edition == "oe" else "-patched"
