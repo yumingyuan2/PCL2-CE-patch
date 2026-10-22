@@ -704,6 +704,9 @@ def patch_oe_launch_toggle(root: Path) -> None:
                 "",
                 "    private void SyncLoginToggle()",
                 "    {",
+                "        var isAuth = pageCurrent == PageType.Auth ||",
+                "                     ProfileService.Current?.ProfileType is ProfileType.Authlib or ProfileType.YggdrasilConnect;",
+                "        PanLoginToggle.Visibility = isAuth ? Visibility.Collapsed : Visibility.Visible;",
                 "        var ms = false;",
                 "        var offline = false;",
                 "        if (pageCurrent == PageType.Offline)",
@@ -974,12 +977,17 @@ def patch_oe_single_profile_flow(root: Path) -> None:
                 "    private void ChangeProfile(object sender, EventArgs e)",
                 "    {",
                 "        " + marker,
-                "        var wasOffline = ProfileService.Current?.ProfileType == ProfileType.Offline;",
+                "        var current = ProfileService.Current;",
+                "        var wasOffline = current?.ProfileType == ProfileType.Offline;",
+                "        var wasAuth = current?.ProfileType is ProfileType.Authlib or ProfileType.YggdrasilConnect;",
+                "        var authServer = current?.Server;",
                 "        ProfileService.Select(null);",
+                "        if (wasAuth) PageLoginAuth.draggedAuthServer = authServer;",
                 "        ModBase.RunInUi(() =>",
                 "        {",
-                "            ModMain.frmLaunchLeft.RefreshPage(true,",
-                "                wasOffline ? ModLaunch.McLoginType.Legacy : ModLaunch.McLoginType.Ms);",
+                "            ModMain.frmLaunchLeft.RefreshPage(true, wasAuth",
+                "                ? ModLaunch.McLoginType.Auth",
+                "                : wasOffline ? ModLaunch.McLoginType.Legacy : ModLaunch.McLoginType.Ms);",
                 "            ModMain.frmLaunchLeft.BtnLaunch.IsEnabled = false;",
                 "        });",
                 "    }",
@@ -1286,6 +1294,27 @@ def patch_oe_more_links(root: Path) -> None:
         code = code.replace(anchor, method + anchor, 1)
         write_source(code_path, code, code_path.read_bytes().startswith(b"\xef\xbb\xbf"))
         print(f"  patched {code_path.relative_to(root)} (Help / Vote handlers)")
+
+
+def patch_oe_auth_entry(root: Path) -> None:
+    """Expose the existing per-version Authlib entry as 第三方登录."""
+    path = find_source(root, "PageInstanceSetup.xaml", "BtnServerNewProfile")
+    text, _ = read_source(path)
+    marker = "<!-- PCL2-CE-patch: OE auth entry -->"
+    if marker in text:
+        return
+    old = 'Text="{DynamicResource Instance.Setup.Server.CreateProfile}"'
+    if old not in text:
+        print("  note: Auth entry button text not found; skipped")
+        return
+    text = text.replace(old, 'Text="第三方登录"', 1)
+    text = text.replace(
+        '<local:MyButton x:Name="BtnServerNewProfile"',
+        marker + "\n                    <local:MyButton x:Name=\"BtnServerNewProfile\"",
+        1,
+    )
+    write_source(path, text, path.read_bytes().startswith(b"\xef\xbb\xbf"))
+    print(f"  patched {path.relative_to(root)} (Authlib entry)")
 
 
 def patch_oe_more_default(root: Path) -> None:
@@ -1767,6 +1796,7 @@ def main() -> int:
             patch_oe_offline_panel(root)
             patch_oe_offline_preview(root)
             patch_oe_shell(root)
+            patch_oe_auth_entry(root)
             patch_oe_settings_order(root)
             patch_oe_more_pages(root)
             patch_oe_more_links(root)
