@@ -2,10 +2,8 @@
 
 这个 Worker 用 Cloudflare Cron Trigger 定时检查
 [PCL-Community/PCL-CE](https://github.com/PCL-Community/PCL-CE) 的最新正式版和 beta 版。
-发现新 tag 时，它向本仓库发送 `repository_dispatch`（`upstream-release` 和
-`upstream-release-oe`），分别触发
-[`patch-release.yml`](../.github/workflows/patch-release.yml) 和
-[`oe-release.yml`](../.github/workflows/oe-release.yml)。
+发现新 tag 时，它向本仓库发送 `repository_dispatch`（`upstream-release`），触发
+[`patch-release.yml`](../.github/workflows/patch-release.yml)。
 
 这样做的原因：GitHub 公共仓库的 `schedule` 工作流在 **60 天没有仓库活动**后会被自动禁用。
 Cloudflare Cron 不受这个限制。
@@ -20,7 +18,6 @@ Cloudflare Cron（默认每 15 分钟）
         ├── 与 KV 中的 upstream-release-state 比较
         └── 有变化 → POST /repos/<本仓库>/dispatches
                         event_type = upstream-release
-                        event_type = upstream-release-oe
 ```
 
 - 第一次运行（KV 为空）会 dispatch 一次。
@@ -119,7 +116,6 @@ crons = ["*/15 * * * *"]
 GITHUB_REPOSITORY = "yumingyuan2/PCL2-CE-patch"
 UPSTREAM_REPOSITORY = "PCL-Community/PCL-CE"
 DISPATCH_EVENT_TYPE = "upstream-release"
-DISPATCH_EVENT_TYPE_OE = "upstream-release-oe"
 ```
 
 - cron 使用 UTC。

@@ -173,7 +173,7 @@ jobs:
           set -euo pipefail
           gh api "repos/PCL-Community/PCL-CE/releases/tags/${UPSTREAM_TAG}" --jq .body > upstream.md || true
           {
-            printf '## PCL2 CE %s（Patched）\n\n' "$VERSION"
+            printf '## PCL2 CE Edit %s\n\n' "$VERSION"
             printf '本构建由 [%s](https://github.com/%s) 自动生成，对应上游 [%s](https://github.com/PCL-Community/PCL-CE/releases/tag/%s)。\n\n' \
               "$REPOSITORY" "$REPOSITORY" "$UPSTREAM_TAG" "$UPSTREAM_TAG"
             printf '已应用补丁：\n\n'
@@ -194,7 +194,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ matrix.version }}-patched
-          name: PCL2 CE ${{ matrix.version }} (Patched)
+          name: PCL2 CE Edit ${{ matrix.version }}
           body_path: body.md
           prerelease: ${{ matrix.prerelease }}
           files: dist/*

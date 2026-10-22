@@ -12,7 +12,6 @@ crons = ["*/15 * * * *"]
 GITHUB_REPOSITORY = "yumingyuan2/PCL2-CE-patch"
 UPSTREAM_REPOSITORY = "PCL-Community/PCL-CE"
 DISPATCH_EVENT_TYPE = "upstream-release"
-DISPATCH_EVENT_TYPE_OE = "upstream-release-oe"
 
 # Create this with:
 #   npx wrangler kv namespace create STATE

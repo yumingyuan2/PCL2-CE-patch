@@ -22,10 +22,10 @@
 
 4. **默认更新指向本仓库的 patched 版本**
    - 新增 `UpdatesPclCePatchModel`，通过 GitHub Releases API 读取本仓库的
-     `PCL2_<CE|OE>_<Release|Beta>_<x64|ARM64>_patched.exe`
+     `PCL2_CE_<Release|Beta>_<x64|ARM64>_patched.exe`
    - 把 `UpdateManager.remoteServer` 替换为只使用该更新源
-   - CE 从 `v<version>-patched`、OE 从 `v<version>-oe-patched` 标签还原版本，
-     并校验 GitHub API 返回的 `sha256` digest
+   - 版本号从 `v<version>-patched` 标签还原，并校验 GitHub API 返回的
+     `sha256` digest
 
 5. **不登录微软账户也能创建其他类型档案**
    - `ProfileUi.CanCreateOtherProfile()` 改为直接返回 `true`
@@ -48,8 +48,7 @@ GitHub Actions 不能直接监听另一个仓库的 `release` 事件，因此：
 - 同时构建「最新的正式版」和「最新的 beta 版」中尚未构建过的版本；beta 即使比
   stable 旧也会保留，方便 beta 通道用户
 - 支持手动 `workflow_dispatch`（可指定 tag，`force=true` 可强制重建已有 release）
-- 支持 `repository_dispatch`（`upstream-release` / `upstream-release-oe`），方便用外部
-  webhook/中转实现即时触发
+- 支持 `repository_dispatch`（`upstream-release`），方便用外部 webhook/中转实现即时触发
 
 > GitHub 公共仓库的 `schedule` 在 60 天没有仓库活动后会被自动禁用。为了不依赖
 > keepalive commit，可以使用 [`worker/`](worker/README.md) 里的 Cloudflare Worker：
@@ -72,20 +71,12 @@ GitHub Actions 不能直接监听另一个仓库的 `release` 事件，因此：
 
 本仓库的 release tag 为 `v<version>-patched`，例如 `v2.15.1-patched`。
 
-## PCL2 OE 预览版
+## PCL2 CE Edit
 
-OE 版与 CE 共用业务代码和补丁，只额外应用官方风格 UI 外壳。产物为：
+当前只维护 PCL2 CE Edit，也就是带上述补丁的 PCL2 CE。下载、启动和实例功能仍由
+PCL2 CE 提供，不照官方当前的“停止 MC 下载”状态。
 
-- `PCL2_OE_Release_x64_patched.exe`
-- `PCL2_OE_Release_ARM64_patched.exe`
-- 对应的 `.sigstore.json`
-
-上游 beta 版本对应 `PCL2_OE_Beta_*_patched.exe`，release tag 为
-`v<version>-oe-patched`。
-
-当前 OE 仍是预览版：顶栏、标题、CE 徽标、“更多”入口和启动页的“正版 / 离线”切换
-已对齐；设置页、更多页和关于页等还在逐步调整。启动页的登录内容仍由 CE 的登录/档案
-页面提供。下载功能保留 CE 的完整能力，不照官方当前的“停止 MC 下载”状态。
+之前的 PCL2 OE 预览 Release 保留，但不再继续更新；后续只维护 CE Edit。
 
 ## 使用前设置
 
@@ -95,7 +86,7 @@ OE 版与 CE 共用业务代码和补丁，只额外应用官方风格 UI 外壳
    `CLIENT_ID`、`CURSEFORGE_API_KEY`、`SENTRY_DSN`、`NAID_CLIENT_ID`、
    `NAID_CLIENT_SECRET`、`LINK_SERVER_ROOTS`、`LOBBY_DEFAULT_SECRET`。
    不配置也能构建，只是对应功能保持禁用。
-3. 在 Actions 页面手动运行一次 `Build patched PCL2 CE` 或 `Build patched PCL2 OE`，或等待定时任务。
+3. 在 Actions 页面手动运行一次 `Build patched PCL2 CE`，或等待定时任务。
 
 ## 更新逻辑说明
 
@@ -114,7 +105,4 @@ https://api.github.com/repos/<owner>/<repo>/releases?per_page=100
 
 如果所在网络无法访问 `api.github.com`，更新检查会失败；Minecraft 下载功能本身不受影响。
 
-## PCL2 OE UI 对齐
 
-面向用户的界面与交互差异报告见：
-[PCL2 OE 用户界面与交互差异报告](docs/oe-ui-parity-report.md)。
