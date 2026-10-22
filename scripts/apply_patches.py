@@ -1082,7 +1082,7 @@ def patch_oe_about_actions(root: Path) -> None:
         method = file_newline.join(
             [
                 "    " + code_marker,
-                "    private void BtnCheckUpdate_Click(object sender, RoutedEventArgs e)",
+                "    private void BtnCheckUpdate_Click(object sender, MouseButtonEventArgs e)",
                 "    {",
                 "        ModMain.frmMain.PageChange(FormMain.PageType.Setup, FormMain.PageSubType.SetupUpdate);",
                 "    }",
