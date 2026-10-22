@@ -92,3 +92,8 @@ https://api.github.com/repos/<owner>/<repo>/releases?per_page=100
 - 更新文件的 SHA-256 使用 GitHub Release asset 的 digest 校验
 
 如果所在网络无法访问 `api.github.com`，更新检查会失败；Minecraft 下载功能本身不受影响。
+
+## PCL2 OE UI 对齐
+
+面向用户的界面与交互差异报告见：
+[PCL2 OE 用户界面与交互差异报告](docs/oe-ui-parity-report.md)。
