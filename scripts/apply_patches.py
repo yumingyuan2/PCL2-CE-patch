@@ -973,10 +973,13 @@ def patch_oe_single_profile_flow(root: Path) -> None:
         )
         progress_method = newline.join(
             [
+                "    private static double _authProgressOffset;",
+                "",
                 "    public void SetAuthLoginProgress(double progress)",
                 "    {",
                 "        if (pageCurrent != PageType.Auth) return;",
                 "        var shown = Math.Clamp(progress, 0d, 1d) * 0.15d;",
+                "        _authProgressOffset = shown;",
                 '        LabLaunchingStage.Text = "登录";',
                 '        LabLaunchingMethod.Text = string.IsNullOrWhiteSpace(PageLoginAuth.ActiveServerName)',
                 '            ? "第三方登录"',
@@ -991,6 +994,18 @@ def patch_oe_single_profile_flow(root: Path) -> None:
         code = code.replace(
             "    public void PageChangeToLaunching()",
             progress_method + "    public void PageChangeToLaunching()",
+            1,
+        )
+        code = code.replace(
+            "    public void PageChangeToLaunching()" + newline + "    {",
+            "    public void PageChangeToLaunching()" + newline + "    {" + newline
+            + "        if (pageCurrent != PageType.Auth) _authProgressOffset = 0d;",
+            1,
+        )
+        code = code.replace(
+            "            var actualProgress = ModLaunch.mcLaunchLoaderReal.Progress;",
+            "            var actualProgress = _authProgressOffset +"
+            + newline + "                                 ModLaunch.mcLaunchLoaderReal.Progress * (1d - _authProgressOffset);",
             1,
         )
         write_source(path, code, path.read_bytes().startswith(b"\xef\xbb\xbf"))
