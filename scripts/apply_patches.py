@@ -561,6 +561,84 @@ def patch_ce_announce(root: Path) -> None:
     print(f"  patched {path.relative_to(root)} (suppressed CE update announcement)")
 
 
+def patch_official_themes(root: Path) -> None:
+    """Add the five official light/dark palette choices without importing PCL code."""
+    enum_path = find_source(root, "ConfigEnums.cs", "enum ColorTheme")
+    enum, enum_newline = read_source(enum_path)
+    if "LongMaoBlue" not in enum:
+        new_enum = (
+            "    HmclBlue = 3,\n"
+            "    LongMaoBlue = 4,\n"
+            "    SweetLimeCyan = 5,\n"
+            "    GrassGreen = 6,\n"
+            "    PineappleYellow = 7,\n"
+            "    OakBrown = 8\n"
+        ).replace("\n", enum_newline)
+        enum = enum.replace("    HmclBlue = 3" + enum_newline, new_enum, 1)
+        write_source(enum_path, enum, enum_path.read_bytes().startswith(b"\xef\xbb\xbf"))
+        print(f"  patched {enum_path.relative_to(root)} (theme enum)")
+
+    service_path = find_source(root, "ThemeService.cs", "ColorTheme.SkyBlue")
+    service, service_newline = read_source(service_path)
+    if "ColorTheme.LongMaoBlue" not in service:
+        old_service = "            ColorTheme.HmclBlue => (275, -0.03, -0.35)," + service_newline
+        new_service = (
+            "            ColorTheme.HmclBlue => (275, -0.03, -0.35),\n"
+            "            ColorTheme.LongMaoBlue => (210, 0, 0),\n"
+            "            ColorTheme.SweetLimeCyan => (180, 0, -0.41),\n"
+            "            ColorTheme.GrassGreen => (130, 0, -0.53),\n"
+            "            ColorTheme.PineappleYellow => (75, 0, -0.41),\n"
+            "            ColorTheme.OakBrown => (35, 0, -0.65),\n"
+        ).replace("\n", service_newline)
+        service = service.replace(old_service, new_service, 1)
+        write_source(service_path, service, service_path.read_bytes().startswith(b"\xef\xbb\xbf"))
+        print(f"  patched {service_path.relative_to(root)} (theme hue table)")
+
+    ui_path = find_source(root, "PageSetupUI.xaml.cs", "ThemeColors")
+    ui, newline = read_source(ui_path)
+    old_colors = (
+        "    public string[] ThemeColors => Basics.IsAprilFool \n"
+        "        ? [Lang.Text(\"Setup.Ui.Theme.Color.SkyBlue\"), Lang.Text(\"Setup.Ui.Theme.Color.CatBlue\"), Lang.Text(\"Setup.Ui.Theme.Color.CrashBlue\"), Lang.Text(\"Setup.Ui.Theme.Color.Hmcl\")]\n"
+        "        : [Lang.Text(\"Setup.Ui.Theme.Color.SkyBlue\"), Lang.Text(\"Setup.Ui.Theme.Color.CatBlue\"), Lang.Text(\"Setup.Ui.Theme.Color.CrashBlue\")];"
+    )
+    new_colors = (
+        "    private static ColorTheme[] ThemeColorOrder => Basics.IsAprilFool\n"
+        "        ? [ColorTheme.SkyBlue, ColorTheme.CatBlue, ColorTheme.DeathBlue, ColorTheme.LongMaoBlue,\n"
+        "           ColorTheme.SweetLimeCyan, ColorTheme.GrassGreen, ColorTheme.PineappleYellow, ColorTheme.OakBrown,\n"
+        "           ColorTheme.HmclBlue]\n"
+        "        : [ColorTheme.SkyBlue, ColorTheme.CatBlue, ColorTheme.DeathBlue, ColorTheme.LongMaoBlue,\n"
+        "           ColorTheme.SweetLimeCyan, ColorTheme.GrassGreen, ColorTheme.PineappleYellow, ColorTheme.OakBrown];\n"
+        "\n"
+        "    public string[] ThemeColors => Basics.IsAprilFool\n"
+        "        ? [Lang.Text(\"Setup.Ui.Theme.Color.SkyBlue\"), Lang.Text(\"Setup.Ui.Theme.Color.CatBlue\"), Lang.Text(\"Setup.Ui.Theme.Color.CrashBlue\"), \"龙猫蓝\", \"甜柠青\", \"小草绿\", \"菠萝黄\", \"橡木棕\", Lang.Text(\"Setup.Ui.Theme.Color.Hmcl\")]\n"
+        "        : [Lang.Text(\"Setup.Ui.Theme.Color.SkyBlue\"), Lang.Text(\"Setup.Ui.Theme.Color.CatBlue\"), Lang.Text(\"Setup.Ui.Theme.Color.CrashBlue\"), \"龙猫蓝\", \"甜柠青\", \"小草绿\", \"菠萝黄\", \"橡木棕\"];"
+    )
+    old_colors = old_colors.replace("\n", newline)
+    new_colors = new_colors.replace("\n", newline)
+    if old_colors in ui:
+        ui = ui.replace(old_colors, new_colors, 1)
+    old_index = (
+        "            ComboDarkColor.SelectedIndex = (int)Config.Preference.Theme.DarkColor;\n"
+        "            ComboLightColor.SelectedIndex = (int)Config.Preference.Theme.LightColor;"
+    ).replace("\n", newline)
+    new_index = (
+        "            ComboDarkColor.SelectedIndex = Math.Max(0, Array.IndexOf(ThemeColorOrder, Config.Preference.Theme.DarkColor));\n"
+        "            ComboLightColor.SelectedIndex = Math.Max(0, Array.IndexOf(ThemeColorOrder, Config.Preference.Theme.LightColor));"
+    ).replace("\n", newline)
+    if old_index in ui:
+        ui = ui.replace(old_index, new_index, 1)
+    if "private void ThemeColor_Change" in ui and "ThemeColorOrder[sender.SelectedIndex]" not in ui:
+        old_set = "        SetByTag(sender.Tag?.ToString(), sender.SelectedIndex);"
+        new_set = (
+            "        if (sender.SelectedIndex >= 0 && sender.SelectedIndex < ThemeColorOrder.Length)\n"
+            "            SetByTag(sender.Tag?.ToString(), (int)ThemeColorOrder[sender.SelectedIndex]);"
+        ).replace("\n", newline)
+        ui = ui.replace(old_set, new_set, 1)
+    ui = ui.replace("        PanLauncherHide.Visibility = Visibility.Visible;", "        PanLauncherHide.Visibility = Visibility.Collapsed;", 1)
+    write_source(ui_path, ui, ui_path.read_bytes().startswith(b"\xef\xbb\xbf"))
+    print(f"  patched {ui_path.relative_to(root)} (theme choices, prompt hidden)")
+
+
 def patch_security_hardening(root: Path) -> None:
     """Redact launch credentials and block custom-homepage setting escalation."""
     log_path = find_source(root, "ModLaunch.cs", "AccessToken：")
@@ -2169,6 +2247,7 @@ def main() -> int:
         patch_ce_announce(root)
         patch_remove_prompts(root)
         patch_security_hardening(root)
+        patch_official_themes(root)
         patch_page_load_smoothness(root)
         if args.edition == "oe":
             patch_oe_launch_toggle(root)
