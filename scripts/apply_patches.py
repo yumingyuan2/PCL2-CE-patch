@@ -1145,6 +1145,15 @@ def patch_oe_single_profile_flow(root: Path) -> None:
             + newline + "                                 ModLaunch.mcLaunchLoaderReal.Progress * (1d - _authProgressOffset);",
             1,
         )
+        same_page_old = "        if (pageCurrent == type)" + newline + "            return;"
+        same_page_new = (
+            "        if (pageCurrent == type)" + newline
+            + "        {" + newline
+            + "            SyncLoginToggle();" + newline
+            + "            return;" + newline
+            + "        }"
+        )
+        code = code.replace(same_page_old, same_page_new, 1)
         write_source(path, code, path.read_bytes().startswith(b"\xef\xbb\xbf"))
         print(f"  patched {path.relative_to(root)} (single-profile flow)")
 
