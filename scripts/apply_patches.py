@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """Apply the PCL2-CE-patch changes to an upstream PCL-CE source checkout.
 
 The patches are deliberately explicit: if upstream refactors one of the
@@ -758,6 +758,7 @@ def patch_oe_launch_toggle(root: Path) -> None:
                 '                    Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,24,0,0">',
                 '            <Border x:Name="BtnLoginMs" Height="28" CornerRadius="14" Padding="10,0"',
                 '                    Margin="0,0" Background="{DynamicResource ColorBrush3}" Cursor="Hand"',
+                '                    MouseEnter="BtnLoginPill_MouseEnter" MouseLeave="BtnLoginPill_MouseLeave"\n'
                 '                    MouseLeftButtonUp="BtnLoginMs_Click">',
                 "                <StackPanel Orientation=\"Horizontal\">",
                 '                    <svgIcon:SvgIcon x:Name="IconLoginMs" Width="16" Height="16" Stretch="Uniform"',
@@ -769,6 +770,7 @@ def patch_oe_launch_toggle(root: Path) -> None:
                 "            </Border>",
                 '            <Border x:Name="BtnLoginOffline" Height="28" CornerRadius="14" Padding="10,0"',
                 '                    Margin="12,0,0,0" Background="Transparent" Cursor="Hand"',
+                '                    MouseEnter="BtnLoginPill_MouseEnter" MouseLeave="BtnLoginPill_MouseLeave"\n'
                 '                    MouseLeftButtonUp="BtnLoginOffline_Click">',
                 "                <StackPanel Orientation=\"Horizontal\">",
                 '                    <svgIcon:SvgIcon x:Name="IconLoginOffline" Width="16" Height="16" Stretch="Uniform"',
@@ -781,7 +783,8 @@ def patch_oe_launch_toggle(root: Path) -> None:
                 "            </Border>",
                 '            <Border x:Name="BtnLoginAuth" Height="28" CornerRadius="14" Padding="10,0"',
                 '                    Margin="12,0,0,0" Background="Transparent" Cursor="Hand"',
-                '                    Visibility="Collapsed" MouseLeftButtonUp="BtnLoginAuth_Click">',
+                '                    Visibility="Collapsed" MouseEnter="BtnLoginPill_MouseEnter" MouseLeave="BtnLoginPill_MouseLeave"\n'
+                '                    MouseLeftButtonUp="BtnLoginAuth_Click">',
                 "                <StackPanel Orientation=\"Horizontal\">",
                 '                    <svgIcon:SvgIcon x:Name="IconLoginAuth" Width="16" Height="16" Stretch="Uniform"',
                 '                                     Icon="lucide/server" IconBrush="{DynamicResource ColorBrush3}"',
@@ -839,6 +842,7 @@ def patch_oe_launch_toggle(root: Path) -> None:
                 "    " + code_marker,
                 "    private bool _syncLoginToggle;",
                 "    private bool _authLoginBusy;",
+                "    private Border? _selectedLoginPill;",
                 "",
                 "    private void BtnLoginMs_Click(object sender, MouseButtonEventArgs e)",
                 "    {",
@@ -901,6 +905,7 @@ def patch_oe_launch_toggle(root: Path) -> None:
                 "            ApplyLoginPill(BtnLoginMs, IconLoginMs, LabLoginMs, msSelected);",
                 "            ApplyLoginPill(BtnLoginOffline, IconLoginOffline, LabLoginOffline, offlineSelected);",
                 "            ApplyLoginPill(BtnLoginAuth, IconLoginAuth, LabLoginAuth, authSelected);",
+                "            _selectedLoginPill = msSelected ? BtnLoginMs : offlineSelected ? BtnLoginOffline : authSelected ? BtnLoginAuth : null;",
                 "        }",
                 "        finally",
                 "        {",
@@ -926,6 +931,30 @@ def patch_oe_launch_toggle(root: Path) -> None:
                 "        icon.IconBrush = iconBrush;",
                 "        iconBrush.BeginAnimation(SolidColorBrush.ColorProperty, new System.Windows.Media.Animation.ColorAnimation(",
                 "            selected ? onAccent.Color : accent.Color, TimeSpan.FromMilliseconds(160))",
+                '            { EasingFunction = new System.Windows.Media.Animation.QuadraticEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut } });',
+                "    }",
+                "",
+                "    private void BtnLoginPill_MouseEnter(object sender, MouseEventArgs e)",
+                "    {",
+                "        if (sender is Border border && border != _selectedLoginPill)",
+                '            AnimatePillBackground(border, "ColorBrush7", 90);',
+                "    }",
+                "",
+                "    private void BtnLoginPill_MouseLeave(object sender, MouseEventArgs e)",
+                "    {",
+                "        if (sender is Border border && border != _selectedLoginPill)",
+                "            AnimatePillBackground(border, null, 150);",
+                "    }",
+                "",
+                "    private static void AnimatePillBackground(Border border, string? resourceKey, int milliseconds)",
+                "    {",
+                "        var target = resourceKey is null",
+                "            ? Colors.Transparent",
+                "            : ((SolidColorBrush)Application.Current.FindResource(resourceKey)).Color;",
+                "        var bg = new SolidColorBrush(border.Background is SolidColorBrush old ? old.Color : Colors.Transparent);",
+                "        border.Background = bg;",
+                "        bg.BeginAnimation(SolidColorBrush.ColorProperty, new System.Windows.Media.Animation.ColorAnimation(",
+                "            target, TimeSpan.FromMilliseconds(milliseconds))",
                 '            { EasingFunction = new System.Windows.Media.Animation.QuadraticEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut } });',
                 "    }",
                 "",
