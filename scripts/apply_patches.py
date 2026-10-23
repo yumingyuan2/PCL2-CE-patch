@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Apply the PCL2-CE-patch changes to an upstream PCL-CE source checkout.
 
 The patches are deliberately explicit: if upstream refactors one of the
@@ -565,10 +565,9 @@ def patch_official_themes(root: Path) -> None:
     """Add the five official light/dark palette choices without importing PCL code."""
     enum_path = find_source(root, "ConfigEnums.cs", "enum ColorTheme")
     enum, enum_newline = read_source(enum_path)
-    if "LongMaoBlue" not in enum:
+    if "SweetLimeCyan" not in enum:
         new_enum = (
             "    HmclBlue = 3,\n"
-            "    LongMaoBlue = 4,\n"
             "    SweetLimeCyan = 5,\n"
             "    GrassGreen = 6,\n"
             "    PineappleYellow = 7,\n"
@@ -580,11 +579,10 @@ def patch_official_themes(root: Path) -> None:
 
     service_path = find_source(root, "ThemeService.cs", "ColorTheme.SkyBlue")
     service, service_newline = read_source(service_path)
-    if "ColorTheme.LongMaoBlue" not in service:
+    if "ColorTheme.SweetLimeCyan" not in service:
         old_service = "            ColorTheme.HmclBlue => (275, -0.03, -0.35)," + service_newline
         new_service = (
             "            ColorTheme.HmclBlue => (275, -0.03, -0.35),\n"
-            "            ColorTheme.LongMaoBlue => (210, 0, 0),\n"
             "            ColorTheme.SweetLimeCyan => (180, 0, -0.41),\n"
             "            ColorTheme.GrassGreen => (130, 0, -0.53),\n"
             "            ColorTheme.PineappleYellow => (75, 0, -0.41),\n"
@@ -603,15 +601,15 @@ def patch_official_themes(root: Path) -> None:
     )
     new_colors = (
         "    private static ColorTheme[] ThemeColorOrder => Basics.IsAprilFool\n"
-        "        ? [ColorTheme.SkyBlue, ColorTheme.CatBlue, ColorTheme.DeathBlue, ColorTheme.LongMaoBlue,\n"
+        "        ? [ColorTheme.SkyBlue, ColorTheme.CatBlue, ColorTheme.DeathBlue,\n"
         "           ColorTheme.SweetLimeCyan, ColorTheme.GrassGreen, ColorTheme.PineappleYellow, ColorTheme.OakBrown,\n"
         "           ColorTheme.HmclBlue]\n"
-        "        : [ColorTheme.SkyBlue, ColorTheme.CatBlue, ColorTheme.DeathBlue, ColorTheme.LongMaoBlue,\n"
+        "        : [ColorTheme.SkyBlue, ColorTheme.CatBlue, ColorTheme.DeathBlue,\n"
         "           ColorTheme.SweetLimeCyan, ColorTheme.GrassGreen, ColorTheme.PineappleYellow, ColorTheme.OakBrown];\n"
         "\n"
         "    public string[] ThemeColors => Basics.IsAprilFool\n"
-        "        ? [Lang.Text(\"Setup.Ui.Theme.Color.SkyBlue\"), Lang.Text(\"Setup.Ui.Theme.Color.CatBlue\"), Lang.Text(\"Setup.Ui.Theme.Color.CrashBlue\"), \"龙猫蓝\", \"甜柠青\", \"小草绿\", \"菠萝黄\", \"橡木棕\", Lang.Text(\"Setup.Ui.Theme.Color.Hmcl\")]\n"
-        "        : [Lang.Text(\"Setup.Ui.Theme.Color.SkyBlue\"), Lang.Text(\"Setup.Ui.Theme.Color.CatBlue\"), Lang.Text(\"Setup.Ui.Theme.Color.CrashBlue\"), \"龙猫蓝\", \"甜柠青\", \"小草绿\", \"菠萝黄\", \"橡木棕\"];"
+        "        ? [Lang.Text(\"Setup.Ui.Theme.Color.SkyBlue\"), Lang.Text(\"Setup.Ui.Theme.Color.CatBlue\"), Lang.Text(\"Setup.Ui.Theme.Color.CrashBlue\"), \"甜柠青\", \"小草绿\", \"菠萝黄\", \"橡木棕\", Lang.Text(\"Setup.Ui.Theme.Color.Hmcl\")]\n"
+        "        : [Lang.Text(\"Setup.Ui.Theme.Color.SkyBlue\"), Lang.Text(\"Setup.Ui.Theme.Color.CatBlue\"), Lang.Text(\"Setup.Ui.Theme.Color.CrashBlue\"), \"甜柠青\", \"小草绿\", \"菠萝黄\", \"橡木棕\"];"
     )
     old_colors = old_colors.replace("\n", newline)
     new_colors = new_colors.replace("\n", newline)
@@ -627,13 +625,24 @@ def patch_official_themes(root: Path) -> None:
     ).replace("\n", newline)
     if old_index in ui:
         ui = ui.replace(old_index, new_index, 1)
-    if "private void ThemeColor_Change" in ui and "ThemeColorOrder[sender.SelectedIndex]" not in ui:
-        old_set = "        SetByTag(sender.Tag?.ToString(), sender.SelectedIndex);"
-        new_set = (
-            "        if (sender.SelectedIndex >= 0 && sender.SelectedIndex < ThemeColorOrder.Length)\n"
-            "            SetByTag(sender.Tag?.ToString(), (int)ThemeColorOrder[sender.SelectedIndex]);"
-        ).replace("\n", newline)
-        ui = ui.replace(old_set, new_set, 1)
+    old_theme_change = (
+        "    private void ThemeColor_Change(object senderRaw, SelectionChangedEventArgs e)\n"
+        "    {\n"
+        "        var sender = (MyComboBox)senderRaw;\n"
+        "        SetByTag(sender.Tag?.ToString(), sender.SelectedIndex);\n"
+        "        ThemeManager.ThemeRefresh();\n"
+        "    }"
+    ).replace("\n", newline)
+    new_theme_change = (
+        "    private void ThemeColor_Change(object senderRaw, SelectionChangedEventArgs e)\n"
+        "    {\n"
+        "        var sender = (MyComboBox)senderRaw;\n"
+        "        if (sender.SelectedIndex >= 0 && sender.SelectedIndex < ThemeColorOrder.Length)\n"
+        "            SetByTag(sender.Tag?.ToString(), (int)ThemeColorOrder[sender.SelectedIndex]);\n"
+        "        ThemeManager.ThemeRefresh();\n"
+        "    }"
+    ).replace("\n", newline)
+    ui = ui.replace(old_theme_change, new_theme_change, 1)
     ui = ui.replace("        PanLauncherHide.Visibility = Visibility.Visible;", "        PanLauncherHide.Visibility = Visibility.Collapsed;", 1)
     write_source(ui_path, ui, ui_path.read_bytes().startswith(b"\xef\xbb\xbf"))
     print(f"  patched {ui_path.relative_to(root)} (theme choices, prompt hidden)")
@@ -641,17 +650,17 @@ def patch_official_themes(root: Path) -> None:
 
 def patch_security_hardening(root: Path) -> None:
     """Redact launch credentials and block custom-homepage setting escalation."""
-    log_path = find_source(root, "ModLaunch.cs", "AccessToken：")
+    log_path = find_source(root, "ModLaunch.cs", "AccessToken")
     text, _ = read_source(log_path)
     if "PCL2-CE-patch: redact launch credentials" not in text:
         text = text.replace(
-            'McLaunchLog("AccessToken：" + mcLoginLoader.output.AccessToken);',
-            'McLaunchLog("AccessToken：（已隐藏）"); // PCL2-CE-patch: redact launch credentials',
+            'McLaunchLog("AccessToken\uff1a" + mcLoginLoader.output.AccessToken);',
+            'McLaunchLog("AccessToken\uff1a\uff08\u5df2\u9690\u85cf\uff09"); // PCL2-CE-patch: redact launch credentials',
             1,
         )
         text = text.replace(
-            'McLaunchLog("ClientToken：" + mcLoginLoader.output.ClientToken);',
-            'McLaunchLog("ClientToken：（已隐藏）");',
+            'McLaunchLog("ClientToken\uff1a" + mcLoginLoader.output.ClientToken);',
+            'McLaunchLog("ClientToken\uff1a\uff08\u5df2\u9690\u85cf\uff09");',
             1,
         )
         write_source(log_path, text, log_path.read_bytes().startswith(b"\xef\xbb\xbf"))
@@ -717,7 +726,7 @@ def patch_page_load_smoothness(root: Path) -> None:
 
 
 def patch_oe_launch_toggle(root: Path) -> None:
-    """Recreate the official 正版/离线 pill switch above the login panel."""
+    """Recreate the official 姝ｇ増/绂荤嚎 pill switch above the login panel."""
     xaml_path = find_source(root, "PageLaunchLeft.xaml", "PanLogin")
     xaml, _ = read_source(xaml_path)
     marker = "<!-- PCL2-CE-patch: OE login type toggle -->"
@@ -754,7 +763,7 @@ def patch_oe_launch_toggle(root: Path) -> None:
                 '                    <svgIcon:SvgIcon x:Name="IconLoginMs" Width="16" Height="16" Stretch="Uniform"',
                 '                                     Icon="lucide/shield-check" IconBrush="White"',
                 '                                     VerticalAlignment="Center" />',
-                '                    <TextBlock x:Name="LabLoginMs" Text="正版" Foreground="White"',
+                '                    <TextBlock x:Name="LabLoginMs" Text="姝ｇ増" Foreground="White"',
                 '                               Margin="6,0,0,0" FontSize="13.5" VerticalAlignment="Center" />',
                 "                </StackPanel>",
                 "            </Border>",
@@ -765,7 +774,7 @@ def patch_oe_launch_toggle(root: Path) -> None:
                 '                    <svgIcon:SvgIcon x:Name="IconLoginOffline" Width="16" Height="16" Stretch="Uniform"',
                 '                                     Icon="lucide/link-2" IconBrush="#127AE1"',
                 '                                     VerticalAlignment="Center" />',
-                '                    <TextBlock x:Name="LabLoginOffline" Text="离线"',
+                '                    <TextBlock x:Name="LabLoginOffline" Text="绂荤嚎"',
                 '                               Foreground="#127AE1"',
                 '                               Margin="6,0,0,0" FontSize="13.5" VerticalAlignment="Center" />',
                 "                </StackPanel>",
@@ -777,7 +786,7 @@ def patch_oe_launch_toggle(root: Path) -> None:
                 '                    <svgIcon:SvgIcon x:Name="IconLoginAuth" Width="16" Height="16" Stretch="Uniform"',
                 '                                     Icon="lucide/server" IconBrush="#127AE1"',
                 '                                     VerticalAlignment="Center" />',
-                '                    <TextBlock x:Name="LabLoginAuth" Text="第三方"',
+                '                    <TextBlock x:Name="LabLoginAuth" Text="绗笁鏂?',
                 '                               Foreground="#127AE1" Margin="6,0,0,0" FontSize="13.5"',
                 '                               VerticalAlignment="Center" />',
                 "                </StackPanel>",
@@ -790,7 +799,7 @@ def patch_oe_launch_toggle(root: Path) -> None:
                 "                <StackPanel Orientation=\"Horizontal\">",
                 '                    <Path Width="16" Height="16" Stretch="Uniform" Fill="#127AE1" VerticalAlignment="Center"',
                 '                          Data="M834.5 684.1c-31.2-70.4-98.9-120.9-179.1-127.3 63.5-8.5 112.6-63 112.6-128.8 0-71.8-58.2-130-130-130s-130 58.2-130 130c0 65.9 49 120.3 112.6 128.8-80.2 6.4-148 57-179.1 127.3-8.7 19.7 6 42 27.6 42 12.1 0 22.7-7.5 27.7-18.5 24.3-53.9 78.5-91.5 141.3-91.5s117 37.6 141.3 91.5c5 11.1 15.6 18.5 27.7 18.5 21.4 0 36.1-22.3 27.4-42zM567.9 427.9c0-38.6 31.4-70 70-70s70 31.4 70 70-31.4 70-70 70-70-31.4-70-70zM460.3 347.9H216.9c-16.6 0-30 13.4-30 30s13.4 30 30 30h243.3c16.6 0 30-13.4 30-30 0.1-16.5-13.4-30-29.9-30zM367.4 459.6H216.9c-16.6 0-30 13.4-30 30s13.4 30 30 30h150.4c16.6 0 30-13.4 30-30 0.1-16.6-13.4-30-29.9-30zM297.4 571.2H217c-16.6 0-30 13.4-30 30s13.4 30 30 30h80.4c16.6 0 30-13.4 30-30 0-16.5-13.5-30-30-30zM900 236v552H124V236h776m0-60H124c-33.1 0-60 26.9-60 60v552c0 33.1 26.9 60 60 60h776c33.1 0 60-26.9 60-60V236c0-33.1-26.9-60-60-60z" />',
-                '                    <TextBlock x:Name="LabLoginAuthType" Text="第三方登录" Foreground="#127AE1"',
+                '                    <TextBlock x:Name="LabLoginAuthType" Text="绗笁鏂圭櫥褰? Foreground="#127AE1"',
                 '                               Margin="6,0,0,0" FontSize="13.5" VerticalAlignment="Center" />',
                 "                </StackPanel>",
                 "            </Border>",
@@ -871,8 +880,8 @@ def patch_oe_launch_toggle(root: Path) -> None:
                 "        PanLoginToggle.Visibility = requirement == 2 ? Visibility.Collapsed : Visibility.Visible;",
                 "        PanLoginAuthType.Visibility = requirement == 2 ? Visibility.Visible : Visibility.Collapsed;",
                 '        LabLoginAuthType.Text = string.IsNullOrWhiteSpace(PageLoginAuth.ActiveServerName)',
-                '            ? "第三方登录"',
-                '            : PageLoginAuth.ActiveServerName + " 登录";',
+                '            ? "绗笁鏂圭櫥褰?',
+                '            : PageLoginAuth.ActiveServerName + " 鐧诲綍";',
                 "        SetLoginToggle(msSelected, offlineSelected, authSelected);",
                 "    }",
                 "",
@@ -903,7 +912,7 @@ def patch_oe_launch_toggle(root: Path) -> None:
                 "",
             ]
         )
-        anchor = "    #region 切换登录页面"
+        anchor = "    #region 鍒囨崲鐧诲綍椤甸潰"
         if anchor not in code:
             raise PatchError("Could not find the login page region")
         code = code.replace(anchor, methods + anchor, 1)
@@ -932,7 +941,7 @@ def patch_oe_offline_panel(root: Path) -> None:
             '    <StackPanel Margin="0,0,0,5" x:Name="PanMain">',
             '        <local:MySkin HorizontalAlignment="Center" x:Name="Skin" HasCape="False" Margin="0,0,0,15" />',
             '        <local:MyComboBox IsEditable="True" x:Name="TextName" Height="28"',
-            '                          IsTextSearchEnabled="False" HintText="游戏用户名" />',
+            '                          IsTextSearchEnabled="False" HintText="娓告垙鐢ㄦ埛鍚? />',
             "    </StackPanel>",
             "</Grid>",
             "",
@@ -1091,17 +1100,17 @@ def patch_oe_single_profile_flow(root: Path) -> None:
         code = code.replace(
             '        LabLaunchingStage.Text = Lang.Text("Common.Action.Initialize");',
             '        LabLaunchingStage.Text = pageCurrent == PageType.Auth'
-            + newline + '            ? "登录"'
+            + newline + '            ? "鐧诲綍"'
             + newline + '            : Lang.Text("Common.Action.Initialize");',
             1,
         )
         code = code.replace(
-            "        // 修改验证方式" + newline + "        switch (ProfileService.Current?.ProfileType)",
-            "        // 修改验证方式" + newline
+            "        // 淇敼楠岃瘉鏂瑰紡" + newline + "        switch (ProfileService.Current?.ProfileType)",
+            "        // 淇敼楠岃瘉鏂瑰紡" + newline
             + "        if (pageCurrent == PageType.Auth)" + newline
             + "        {" + newline
             + '            LabLaunchingMethod.Text = string.IsNullOrWhiteSpace(PageLoginAuth.ActiveServerName)' + newline
-            + '                ? "第三方登录"' + newline
+            + '                ? "绗笁鏂圭櫥褰?' + newline
             + "                : PageLoginAuth.ActiveServerName;" + newline
             + "        }" + newline
             + "        else" + newline
@@ -1117,9 +1126,9 @@ def patch_oe_single_profile_flow(root: Path) -> None:
                 "        if (pageCurrent != PageType.Auth) return;",
                 "        var shown = Math.Clamp(progress, 0d, 1d) * 0.15d;",
                 "        _authProgressOffset = shown;",
-                '        LabLaunchingStage.Text = "登录";',
+                '        LabLaunchingStage.Text = "鐧诲綍";',
                 '        LabLaunchingMethod.Text = string.IsNullOrWhiteSpace(PageLoginAuth.ActiveServerName)',
-                '            ? "第三方登录"',
+                '            ? "绗笁鏂圭櫥褰?',
                 "            : PageLoginAuth.ActiveServerName;",
                 '        LabLaunchingProgress.Text = Lang.Number(shown, "P0");',
                 "        ProgressLaunchingFinished.Width = new GridLength(shown * 100d, GridUnitType.Star);",
@@ -1308,7 +1317,7 @@ def patch_oe_offline_preview(root: Path) -> None:
 
 
 def patch_oe_login_panel(root: Path) -> None:
-    """Match the official Microsoft login row: account combo + 登录 button."""
+    """Match the official Microsoft login row: account combo + 鐧诲綍 button."""
     path = find_source(root, "PageLoginMs.xaml", "BtnLogin")
     text, newline = read_source(path)
     marker = "<!-- PCL2-CE-patch: OE login row -->"
@@ -1332,10 +1341,10 @@ def patch_oe_login_panel(root: Path) -> None:
             '            <local:MyComboBox x:Name="ComboAccounts" Height="28" Margin="0,0,0,0">',
             "                <local:MyComboBox.ContextMenu>",
             "                    <ContextMenu>",
-            '                        <local:MyMenuItem Header="删除当前账号" Click="DeleteAccount_Click" />',
+            '                        <local:MyMenuItem Header="鍒犻櫎褰撳墠璐﹀彿" Click="DeleteAccount_Click" />',
             "                    </ContextMenu>",
             "                </local:MyComboBox.ContextMenu>",
-            '                <local:MyComboBoxItem Content="添加新账号" />',
+            '                <local:MyComboBoxItem Content="娣诲姞鏂拌处鍙? />',
             "            </local:MyComboBox>",
             '            <local:MyButton x:Name="BtnLogin" Grid.Column="1" Height="28" Width="60"',
             '                            Margin="10,0,0,0" ColorType="Highlight"',
@@ -1445,7 +1454,7 @@ def patch_oe_login_panel(root: Path) -> None:
 
 
 def patch_oe_settings_order(root: Path) -> None:
-    """Collapse OE settings into 启动 / 个性化 / 其他 like official PCL."""
+    """Collapse OE settings into 鍚姩 / 涓€у寲 / 鍏朵粬 like official PCL."""
     path = find_source(root, "PageSetupLeft.xaml", "TextAboutCategory")
     text, newline = read_source(path)
     marker = "<!-- PCL2-CE-patch: OE settings order -->"
@@ -1463,7 +1472,7 @@ def patch_oe_settings_order(root: Path) -> None:
     game_link = game.group(0).rstrip("\r\n")
     text = text[: game.start()] + text[game.end() :]
 
-    # Remove the old “工具” category header and its trailing blank line.
+    # Remove the old 鈥滃伐鍏封€?category header and its trailing blank line.
     text = re.sub(
         r"^[ \t]*<TextBlock[^\n]*Setup\.Left\.Category\.Tools[^\n]*\r?\n(?:[ \t]*\r?\n)?",
         "",
@@ -1471,7 +1480,7 @@ def patch_oe_settings_order(root: Path) -> None:
         count=1,
         flags=re.MULTILINE,
     )
-    # Collapse the extra blank line left before “启动器/个性化”.
+    # Collapse the extra blank line left before 鈥滃惎鍔ㄥ櫒/涓€у寲鈥?
     text = re.sub(
         r"(?:\r?\n){2,}(?=[ \t]*<TextBlock[^\n]*Category\.Launcher)",
         newline,
@@ -1479,7 +1488,7 @@ def patch_oe_settings_order(root: Path) -> None:
         count=1,
     )
 
-    # Put the link entry under the “其他” category.
+    # Put the link entry under the 鈥滃叾浠栤€?category.
     about = re.search(
         r"^[ \t]*<TextBlock[^\n]*Category\.About[^\n]*\r?\n",
         text,
@@ -1521,11 +1530,11 @@ def patch_oe_more_links(root: Path) -> None:
                 "        " + marker,
                 '        <local:MyListItem x:Name="ItemHelp" IsScaleAnimationEnabled="False" Type="Clickable"',
                 '                           MinPaddingRight="35" Height="36"',
-                '                           Title="帮助" SvgIcon="lucide/circle-help"',
+                '                           Title="甯姪" SvgIcon="lucide/circle-help"',
                 '                           Tag="https://github.com/LTCatt/PCL2Help" Click="OpenMoreLink" />',
                 '        <local:MyListItem x:Name="ItemVote" IsScaleAnimationEnabled="False" Type="Clickable"',
                 '                           MinPaddingRight="35" Height="36"',
-                '                           Title="新功能投票" SvgIcon="lucide/layout-list"',
+                '                           Title="鏂板姛鑳芥姇绁? SvgIcon="lucide/layout-list"',
                 '                           Tag="https://github.com/Meloong-Git/PCL/discussions/2" Click="OpenMoreLink" />',
             ]
         )
@@ -1554,7 +1563,7 @@ def patch_oe_more_links(root: Path) -> None:
                 "",
             ]
         )
-        anchor = "    #region 页面切换"
+        anchor = "    #region 椤甸潰鍒囨崲"
         if anchor not in code:
             raise PatchError("Could not find PageTools page region")
         code = code.replace(anchor, method + anchor, 1)
@@ -1586,26 +1595,26 @@ def patch_oe_auth_page(root: Path) -> None:
             '        <ColumnDefinition Width="224" />',
             "    </Grid.ColumnDefinitions>",
             '    <local:MyComboBox Grid.Row="0" Grid.Column="1" IsEditable="True" Height="28" x:Name="TextName" />',
-            '    <TextBlock x:Name="TextNameTitle" Text="邮箱" Grid.Row="0" VerticalAlignment="Center" />',
+            '    <TextBlock x:Name="TextNameTitle" Text="閭" Grid.Row="0" VerticalAlignment="Center" />',
             '    <PasswordBox Grid.Row="2" Grid.Column="1" x:Name="TextPass" />',
-            '    <TextBlock x:Name="TextPassTitle" Text="密码" Grid.Row="2" VerticalAlignment="Center" />',
+            '    <TextBlock x:Name="TextPassTitle" Text="瀵嗙爜" Grid.Row="2" VerticalAlignment="Center" />',
             '    <local:MyCheckBox x:Name="CheckRemember" Tag="LoginRemember" Height="20" Margin="-1,12,80,0"',
-            '                     Text="记住密码" Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2" />',
-            '    <local:MyTextButton Margin="0,12,2,0" x:Name="BtnLink" Content="找回密码" Grid.Row="3"',
+            '                     Text="璁颁綇瀵嗙爜" Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2" />',
+            '    <local:MyTextButton Margin="0,12,2,0" x:Name="BtnLink" Content="鎵惧洖瀵嗙爜" Grid.Row="3"',
             '                        HorizontalAlignment="Right" Grid.Column="1" Padding="20,0,0,0"',
             '                        HorizontalContentAlignment="Right" FontSize="13" VerticalContentAlignment="Center" />',
             "    <Grid x:Name=\"PanHidden\" Grid.RowSpan=\"4\" Grid.ColumnSpan=\"2\" Visibility=\"Collapsed\">",
             '        <Grid x:Name="PanOAuth">',
-            '            <local:MyButton x:Name="BtnOAuth" Text="OAuth 登录" />',
-            '            <local:MyButton x:Name="BtnBackOAuth" Text="返回" />',
-            '            <local:MyTextButton x:Name="BtnUsePassword" Text="使用密码" />',
-            '            <local:MyTextButton x:Name="BtnUseOAuth" Text="使用 OAuth" />',
-            '            <local:MyTextButton x:Name="BtnWebsite" Text="官网" />',
-            '            <local:MyTextButton x:Name="BtnPasswordWebsite" Text="官网" />',
+            '            <local:MyButton x:Name="BtnOAuth" Text="OAuth 鐧诲綍" />',
+            '            <local:MyButton x:Name="BtnBackOAuth" Text="杩斿洖" />',
+            '            <local:MyTextButton x:Name="BtnUsePassword" Text="浣跨敤瀵嗙爜" />',
+            '            <local:MyTextButton x:Name="BtnUseOAuth" Text="浣跨敤 OAuth" />',
+            '            <local:MyTextButton x:Name="BtnWebsite" Text="瀹樼綉" />',
+            '            <local:MyTextButton x:Name="BtnPasswordWebsite" Text="瀹樼綉" />',
             '            <Grid x:Name="PanPasswordLinks" />',
             "        </Grid>",
-            '        <local:MyButton x:Name="BtnLogin" Text="登录" />',
-            '        <local:MyButton x:Name="BtnBack" Text="返回" />',
+            '        <local:MyButton x:Name="BtnLogin" Text="鐧诲綍" />',
+            '        <local:MyButton x:Name="BtnBack" Text="杩斿洖" />',
             "    </Grid>",
             "</Grid>",
             "",
@@ -1639,8 +1648,8 @@ def patch_oe_auth_page(root: Path) -> None:
         '        var authInstance = PageInstanceLeft.McInstance ?? ModInstanceList.McMcInstanceSelected;\n'
         '        if (string.IsNullOrWhiteSpace(_authServerUrl) && authInstance is not null)\n'
         '            _authServerUrl = Config.InstanceAuth.AuthServerAddress[authInstance.PathInstance];\n'
-        '        ActiveServerName = _authServerUrl.Contains("littleskin", StringComparison.OrdinalIgnoreCase) ? "LittleSkin" : "第三方登录";\n'
-        '        if (ModMain.frmLaunchLeft is not null) ModMain.frmLaunchLeft.LabLoginAuthType.Text = ActiveServerName.EndsWith("登录") ? ActiveServerName : ActiveServerName + " 登录";\n'
+        '        ActiveServerName = _authServerUrl.Contains("littleskin", StringComparison.OrdinalIgnoreCase) ? "LittleSkin" : "绗笁鏂圭櫥褰?;\n'
+        '        if (ModMain.frmLaunchLeft is not null) ModMain.frmLaunchLeft.LabLoginAuthType.Text = ActiveServerName.EndsWith("鐧诲綍") ? ActiveServerName : ActiveServerName + " 鐧诲綍";\n'
         "        draggedAuthServer = null;\n"
         "        draggedAuthServerOAuthSupported = null;\n"
         "        _oauthSupported = false;\n"
@@ -1793,7 +1802,7 @@ def patch_oe_auth_page(root: Path) -> None:
 
 
 def patch_oe_auth_entry(root: Path) -> None:
-    """Expose the existing per-version Authlib entry as 第三方登录."""
+    """Expose the existing per-version Authlib entry as 绗笁鏂圭櫥褰?"""
     path = find_source(root, "PageInstanceSetup.xaml", "BtnServerNewProfile")
     text, _ = read_source(path)
     marker = "<!-- PCL2-CE-patch: OE auth entry -->"
@@ -1803,7 +1812,7 @@ def patch_oe_auth_entry(root: Path) -> None:
     if old not in text:
         print("  note: Auth entry button text not found; skipped")
         return
-    text = text.replace(old, 'Text="第三方登录"', 1)
+    text = text.replace(old, 'Text="绗笁鏂圭櫥褰?', 1)
     text = text.replace(
         '<local:MyButton x:Name="BtnServerNewProfile"',
         marker + "\n                    <local:MyButton x:Name=\"BtnServerNewProfile\"",
@@ -1850,7 +1859,7 @@ def patch_oe_more_default(root: Path) -> None:
 
 
 def patch_oe_about_actions(root: Path) -> None:
-    """Match the official About card's 检查更新 action."""
+    """Match the official About card's 妫€鏌ユ洿鏂?action."""
     path = find_source(root, "PageSetupAbout.xaml", "Setup.About.SourceCode")
     xaml, newline = read_source(path)
     marker = "<!-- PCL2-CE-patch: OE about update -->"
@@ -1867,7 +1876,7 @@ def patch_oe_about_actions(root: Path) -> None:
             [
                 "                    " + marker,
                 '                    <local:MyButton Grid.Row="2" Grid.Column="2" Height="35"',
-                '                                    Text="检查更新" Click="BtnCheckUpdate_Click" />',
+                '                                    Text="妫€鏌ユ洿鏂? Click="BtnCheckUpdate_Click" />',
             ]
         )
         xaml = xaml[: source_button.start()] + replacement + xaml[source_button.end() :]
@@ -1895,7 +1904,7 @@ def patch_oe_about_actions(root: Path) -> None:
 
 
 def patch_oe_hide_font_card(root: Path) -> None:
-    """Hide the CE-only font card so 个性化 matches official PCL."""
+    """Hide the CE-only font card so 涓€у寲 matches official PCL."""
     path = find_source(root, "PageSetupUI.xaml", "CardFont")
     text, _ = read_source(path)
     marker = "<!-- PCL2-CE-patch: OE hide font card -->"
@@ -1917,7 +1926,7 @@ def patch_oe_more_flat(root: Path) -> None:
     marker = "<!-- PCL2-CE-patch: OE more flat -->"
     if marker in text:
         return
-    for needle in ("Tools.Left.Multiplayer", "Tools.Left.Utilities", 'Text="关于与反馈"'):
+    for needle in ("Tools.Left.Multiplayer", "Tools.Left.Utilities", 'Text="鍏充簬涓庡弽棣?'):
         text, count = re.subn(
             rf"[ \t]*<TextBlock[^>]*{re.escape(needle)}[^>]*/>\r?\n(?:[ \t]*\r?\n)?",
             "",
@@ -1938,7 +1947,7 @@ def patch_oe_more_flat(root: Path) -> None:
     ui_path = find_source(root, "PageSetupUI.xaml.cs", "TextGameLinkCategory")
     ui_text, _ = read_source(ui_path)
     ui_text, count = re.subn(
-        r"[ \t]*// 处理分类标题\r?\n"
+        r"[ \t]*// 澶勭悊鍒嗙被鏍囬\r?\n"
         r".*?if \(isToolsVisible\) ModMain\.frmToolsLeft\.TextToolsCategory\.Opacity = 0\.6;\r?\n",
         "",
         ui_text,
@@ -2003,7 +2012,7 @@ def patch_oe_more_pages(root: Path) -> None:
         block = file_newline.join(
             [
                 "        " + marker,
-                '        <TextBlock Text="关于与反馈" Margin="13,5,5,3" Opacity="0.6" FontSize="12" />',
+                '        <TextBlock Text="鍏充簬涓庡弽棣? Margin="13,5,5,3" Opacity="0.6" FontSize="12" />',
                 '        <local:MyListItem x:Name="ItemAbout" IsScaleAnimationEnabled="False" Type="RadioBox"',
                 '                           Tag="4" Check="PageCheck" MinPaddingRight="35" Height="36"',
                 '                           Title="{DynamicResource Setup.Left.Item.About}"',
@@ -2068,7 +2077,7 @@ def patch_oe_about_footer(root: Path) -> None:
             "            " + marker,
             '            <TextBlock Margin="21,0,21,20" HorizontalAlignment="Center" FontSize="12"',
             '                       Opacity="0.5" TextWrapping="Wrap"',
-            '                       Text="PCL2 OE 是第三方修改版，与官方 PCL 无关。" />',
+            '                       Text="PCL2 OE 鏄涓夋柟淇敼鐗堬紝涓庡畼鏂?PCL 鏃犲叧銆? />',
         ]
     )
     text = text.replace(anchor, footer + newline + anchor, 1)
@@ -2127,8 +2136,8 @@ def patch_oe_shell(root: Path) -> None:
 
     # Localized label for the fourth top-level tab.
     labels = {
-        "zh-CN.xaml": "更多",
-        "zh-TW.xaml": "更多",
+        "zh-CN.xaml": "鏇村",
+        "zh-TW.xaml": "鏇村",
         "en-US.xaml": "More",
         "en-GB.xaml": "More",
     }
@@ -2317,3 +2326,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
